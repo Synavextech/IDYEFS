@@ -1,0 +1,150 @@
+import express from 'express';
+import cors from 'cors';
+import dotenv from 'dotenv';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { createClient } from '@supabase/supabase-js';
+import Stripe from 'stripe';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+dotenv.config({ path: path.join(__dirname, '../../.env') });
+
+const app = express();
+const PORT = process.env.PORT || 5000;
+
+// Supabase Setup
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+// Stripe Setup
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+
+app.use(cors());
+app.use(express.json());
+
+// API Routes
+app.get('/api/health', (req, res) => {
+    res.json({ status: 'ok' });
+});
+
+// Stripe Checkout Session
+app.post('/api/create-checkout-session', async (req, res) => {
+    const { eventId, category, amount, userId, bookingId, type = 'event' } = req.body;
+    try {
+        // Check if event has already passed
+        const { data: eventData, error: eventError } = await supabase
+            .from('Event')
+            .select('date')
+            .eq('id', eventId)
+            .single();
+
+        if (eventError || !eventData) {
+            console.error('Event fetch error:', eventError);
+            return res.status(404).json({ error: "Event not found" });
+        }
+
+        const eventDate = new Date(eventData.date);
+        const now = new Date();
+        if (eventDate < now) {
+            return res.status(400).json({ error: "This event has already passed. Registration is closed." });
+        }
+
+        const metadata = {
+            bookingId,
+            userId,
+            eventId,
+            type
+        };
+
+        const session = await stripe.checkout.sessions.create({
+            payment_method_types: ['card'],
+            line_items: [{
+                price_data: {
+                    currency: 'usd',
+                    product_data: {
+                        name: type === 'visa' ? `Visa Invitation Request: ${eventId}` : `Event Booking: ${eventId}`,
+                        description: type === 'visa' ? 'Official Visa Invitation Letter' : `Category: ${category}`,
+                    },
+                    unit_amount: Math.round(amount * 100),
+                },
+                quantity: 1,
+            }],
+            mode: 'payment',
+            success_url: `${process.env.VITE_FRONTEND_URL}/upcoming-events?status=success&bookingId=${bookingId}&type=${type}`,
+            cancel_url: `${process.env.VITE_FRONTEND_URL}/upcoming-events?status=cancelled`,
+            metadata
+        });
+        res.json({ id: session.id, url: session.url });
+    } catch (error) {
+        console.error('Stripe session error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Stripe Webhook for async confirmation
+app.post('/api/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
+    const sig = req.headers['stripe-signature'];
+    let event;
+
+    try {
+        event = stripe.webhooks.constructEvent(req.body, sig, process.env.STRIPE_WEBHOOK_SECRET);
+    } catch (err) {
+        return res.status(400).send(`Webhook Error: ${err.message}`);
+    }
+
+    if (event.type === 'checkout.session.completed') {
+        const session = event.data.object;
+        const { bookingId, type } = session.metadata;
+
+        try {
+            if (type === 'event') {
+                await supabase.from('Booking').update({ status: 'CONFIRMED' }).eq('id', bookingId);
+            } else if (type === 'visa') {
+                await supabase.from('VisaInvitation').update({ status: 'PAID', paymentStatus: 'PAID' }).eq('id', bookingId);
+            }
+            console.log(`Payment confirmed and DB updated for ${type} ${bookingId}`);
+        } catch (dbError) {
+            console.error('Database update error in webhook:', dbError);
+        }
+    }
+
+    res.json({ received: true });
+});
+
+// PayPal Order Verification
+app.post('/api/verify-paypal-order', async (req, res) => {
+    try {
+        const { orderId, bookingId, type } = req.body;
+
+        // In a real app, verify with PayPal API here
+        // For now, we trust the client-side success and update the status
+
+        if (type === 'event') {
+            const { error } = await supabase.from('Booking').update({ status: 'CONFIRMED' }).eq('id', bookingId);
+            if (error) throw error;
+        } else if (type === 'visa') {
+            const { error } = await supabase.from('VisaInvitation').update({ status: 'PAID', paymentStatus: 'PAID' }).eq('id', bookingId);
+            if (error) throw error;
+        }
+
+        res.json({ status: 'verified', orderId });
+    } catch (error) {
+        console.error('PayPal verification error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Serve static assets in production
+if (process.env.NODE_ENV === 'production') {
+    app.use(express.static(path.join(__dirname, '../../dist')));
+    app.get('*', (req, res) => {
+        res.sendFile(path.join(__dirname, '../../dist/index.html'));
+    });
+}
+
+app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+});
