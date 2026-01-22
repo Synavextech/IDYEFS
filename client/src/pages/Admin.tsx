@@ -6,6 +6,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Loader2, Plus, Trash2, Edit2, Upload, Image as ImageIcon, CheckCircle, User2 } from "lucide-react";
 import { format } from "date-fns";
@@ -184,7 +185,7 @@ function BlogManager() {
                     <form onSubmit={onSubmitBlog} className="space-y-4">
                         <Input name="title" placeholder="Title" required />
                         <Input name="imageUrl" placeholder="Image URL (e.g. from Unsplash)" />
-                        <textarea name="content" className="w-full min-h-[200px] p-2 border rounded-md" placeholder="Content..." required />
+                        <Textarea name="content" className="min-h-[200px]" placeholder="Content..." required />
                         <Button type="submit" disabled={isSubmitting} className="w-full">Post Blog</Button>
                     </form>
                 </CardContent>
@@ -216,6 +217,7 @@ export default function AdminDashboard() {
     const [selectedImages, setSelectedImages] = useState<File[]>([]);
     const [imagePreviews, setImagePreviews] = useState<string[]>([]);
     const [activeTab, setActiveTab] = useState<'events' | 'blogs' | 'visa'>('events');
+    const [editingEvent, setEditingEvent] = useState<Event | null>(null);
 
     useEffect(() => {
         fetchEvents();
@@ -315,6 +317,56 @@ export default function AdminDashboard() {
     const [alignment, setAlignment] = useState({ title: "", description: "" });
     const [journey, setJourney] = useState({ arrival: "", expectations: "" });
 
+    const handleEditClick = (event: Event) => {
+        setEditingEvent(event);
+        setActivities(event.activities || []);
+        setSpeakers(event.speakers || []);
+        setFaqs(event.faqs || []);
+        setFeatures(event.features || []);
+        setAlignment(event.alignment || { title: "", description: "" });
+        setJourney(event.journey || { arrival: "", expectations: "" });
+
+        // Populate standard form fields
+        const form = document.querySelector('form') as HTMLFormElement;
+        if (form) {
+            const titleInput = form.querySelector('#title') as HTMLInputElement;
+            const themeInput = form.querySelector('#theme') as HTMLInputElement;
+            const dateInput = form.querySelector('#date') as HTMLInputElement;
+            const priceInput = form.querySelector('#price') as HTMLInputElement;
+            const locationInput = form.querySelector('#location') as HTMLInputElement;
+            const descriptionInput = form.querySelector('#description') as HTMLTextAreaElement;
+            const selfFundedInput = form.querySelector('#self_funded_seats') as HTMLInputElement;
+            const partiallyFundedInput = form.querySelector('#partially_funded_seats') as HTMLInputElement;
+            const fullyFundedInput = form.querySelector('#fully_funded_seats') as HTMLInputElement;
+
+            if (titleInput) titleInput.value = event.title;
+            if (themeInput) themeInput.value = event.theme || "";
+            if (dateInput) dateInput.value = event.date ? new Date(event.date).toISOString().split('T')[0] : "";
+            if (priceInput) priceInput.value = event.price?.toString() || "0";
+            if (locationInput) locationInput.value = event.location || "";
+            if (descriptionInput) descriptionInput.value = event.description || "";
+            if (selfFundedInput) selfFundedInput.value = event.self_funded_seats?.toString() || "0";
+            if (partiallyFundedInput) partiallyFundedInput.value = event.partially_funded_seats?.toString() || "0";
+            if (fullyFundedInput) fullyFundedInput.value = event.fully_funded_seats?.toString() || "0";
+        }
+
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
+
+    const cancelEdit = () => {
+        setEditingEvent(null);
+        setActivities([]);
+        setSpeakers([]);
+        setFaqs([]);
+        setFeatures([]);
+        setAlignment({ title: "", description: "" });
+        setJourney({ arrival: "", expectations: "" });
+        setSelectedImages([]);
+        setImagePreviews([]);
+        const form = document.querySelector('form') as HTMLFormElement;
+        if (form) form.reset();
+    };
+
     const onSubmitEvent = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
         console.log("[Submit] Event submission started...");
@@ -367,39 +419,75 @@ export default function AdminDashboard() {
                 }
             }));
 
-            console.log("[Submit] Inserting event record into Supabase...");
-            const { error } = await supabase
-                .from('Event')
-                .insert({
-                    title,
-                    theme,
-                    description,
-                    date: eventDate.toISOString(),
-                    location,
-                    price: parseFloat(priceStr) || 0,
-                    imageUrls: imageUrls,
-                    activities,
-                    speakers: speakersWithImages,
-                    faqs,
-                    features,
-                    alignment,
-                    journey,
-                    self_funded_seats: parseInt(selfFundedSeats) || 0,
-                    partially_funded_seats: parseInt(partiallyFundedSeats) || 0,
-                    fully_funded_seats: parseInt(fullyFundedSeats) || 0
-                });
+            if (editingEvent) {
+                console.log("[Submit] Updating event record in Supabase...");
+                // Merge images for editing: keep existing if no new ones, or append/replace as logic dictates.
+                // For now, we'll keep existing ones and ONLY add new ones if provided.
+                const finalImageUrls = imageUrls.length > 0 ? [...(editingEvent.imageUrls || []), ...imageUrls] : (editingEvent.imageUrls || []);
 
-            if (error) {
-                console.error("[Submit] Supabase Insert Error:", error);
-                throw error;
+                const { error } = await supabase
+                    .from('Event')
+                    .update({
+                        title,
+                        theme,
+                        description,
+                        date: eventDate.toISOString(),
+                        location,
+                        price: parseFloat(priceStr) || 0,
+                        imageUrls: finalImageUrls,
+                        activities,
+                        speakers: speakersWithImages,
+                        faqs,
+                        features,
+                        alignment,
+                        journey,
+                        self_funded_seats: parseInt(selfFundedSeats) || 0,
+                        partially_funded_seats: parseInt(partiallyFundedSeats) || 0,
+                        fully_funded_seats: parseInt(fullyFundedSeats) || 0
+                    })
+                    .eq('id', editingEvent.id);
+
+                if (error) {
+                    console.error("[Submit] Supabase Update Error:", error);
+                    throw error;
+                }
+                toast({ title: "Event updated successfully!" });
+            } else {
+                console.log("[Submit] Inserting event record into Supabase...");
+                const { error } = await supabase
+                    .from('Event')
+                    .insert({
+                        title,
+                        theme,
+                        description,
+                        date: eventDate.toISOString(),
+                        location,
+                        price: parseFloat(priceStr) || 0,
+                        imageUrls: imageUrls,
+                        activities,
+                        speakers: speakersWithImages,
+                        faqs,
+                        features,
+                        alignment,
+                        journey,
+                        self_funded_seats: parseInt(selfFundedSeats) || 0,
+                        partially_funded_seats: parseInt(partiallyFundedSeats) || 0,
+                        fully_funded_seats: parseInt(fullyFundedSeats) || 0
+                    });
+
+                if (error) {
+                    console.error("[Submit] Supabase Insert Error:", error);
+                    throw error;
+                }
+                toast({ title: "Event created successfully!" });
             }
 
-            console.log("[Submit] Event created successfully! Refreshing list...");
-            toast({ title: "Event created successfully!" });
+            console.log("[Submit] Success! Refreshing list...");
             await fetchEvents();
 
             console.log("[Submit] Resetting form state...");
             (e.target as HTMLFormElement).reset();
+            setEditingEvent(null);
             setSelectedImages([]);
             setImagePreviews([]);
             setActivities([]);
@@ -475,8 +563,10 @@ export default function AdminDashboard() {
                     {/* Event Form */}
                     <Card className="lg:col-span-1">
                         <CardHeader>
-                            <CardTitle>Create New Event</CardTitle>
-                            <CardDescription>Add a past or upcoming event to the gallery.</CardDescription>
+                            <CardTitle>{editingEvent ? "Edit Event" : "Create New Event"}</CardTitle>
+                            <CardDescription>
+                                {editingEvent ? `Modifying: ${editingEvent.title}` : "Add a past or upcoming event to the gallery."}
+                            </CardDescription>
                         </CardHeader>
                         <CardContent>
                             <form onSubmit={onSubmitEvent} className="space-y-4">
@@ -517,12 +607,11 @@ export default function AdminDashboard() {
                                     <Input id="location" name="location" placeholder="Nairobi, Kenya" />
                                 </div>
                                 <div className="space-y-2">
-                                    <Label htmlFor="description">Overview/About</Label>
-                                    <textarea
+                                    <Label htmlFor="description" className="text-primary font-semibold">Overview/About</Label>
+                                    <Textarea
                                         id="description"
                                         name="description"
                                         required
-                                        className="w-full min-h-[100px] p-2 border rounded-md focus:ring-2 focus:ring-primary outline-none"
                                         placeholder="Brief summary of the event..."
                                     />
                                 </div>
@@ -534,37 +623,39 @@ export default function AdminDashboard() {
                                         Add Day
                                     </Button>
                                     {activities.map((day, dIdx) => (
-                                        <Card key={dIdx} className="p-4 space-y-2">
-                                            <div className="flex justify-between items-center">
-                                                <Label>Day {day.day}</Label>
-                                                <Button type="button" variant="ghost" size="sm" onClick={() => setActivities(activities.filter((_, i) => i !== dIdx))} className="text-red-500">
+                                        <Card key={dIdx} className="p-4 space-y-3 bg-muted/30 border-primary/20">
+                                            <div className="flex justify-between items-center bg-primary/5 p-2 rounded-t-md -mx-4 -mt-4 mb-2">
+                                                <Label className="text-primary font-bold">Day {day.day}</Label>
+                                                <Button type="button" variant="ghost" size="sm" onClick={() => setActivities(activities.filter((_, i) => i !== dIdx))} className="text-destructive hover:bg-destructive/10">
                                                     <Trash2 className="h-4 w-4" />
                                                 </Button>
                                             </div>
-                                            <Input placeholder="Date (e.g. April 2)" value={day.date} onChange={e => {
+                                            <Input placeholder="Date (e.g. April 2)" value={day.date} className="bg-background" onChange={e => {
                                                 const newA = [...activities];
                                                 newA[dIdx].date = e.target.value;
                                                 setActivities(newA);
                                             }} />
-                                            <Button type="button" variant="ghost" size="sm" onClick={() => {
+                                            <Button type="button" variant="secondary" size="sm" className="w-full" onClick={() => {
                                                 const newA = [...activities];
                                                 newA[dIdx].items.push({ title: "", description: "" });
                                                 setActivities(newA);
-                                            }}>+ Activity</Button>
-                                            {day.items.map((item: any, iIdx: number) => (
-                                                <div key={iIdx} className="pl-4 border-l-2 space-y-2 mt-2">
-                                                    <Input placeholder="Activity Title" value={item.title} onChange={e => {
-                                                        const newA = [...activities];
-                                                        newA[dIdx].items[iIdx].title = e.target.value;
-                                                        setActivities(newA);
-                                                    }} />
-                                                    <textarea placeholder="Description" className="w-full p-2 text-sm border rounded" value={item.description} onChange={e => {
-                                                        const newA = [...activities];
-                                                        newA[dIdx].items[iIdx].description = e.target.value;
-                                                        setActivities(newA);
-                                                    }} />
-                                                </div>
-                                            ))}
+                                            }}>+ Add Activity</Button>
+                                            <div className="space-y-3">
+                                                {day.items.map((item: any, iIdx: number) => (
+                                                    <div key={iIdx} className="pl-4 border-l-2 border-primary/30 space-y-2 mt-2 py-1">
+                                                        <Input placeholder="Activity Title" value={item.title} className="bg-background" onChange={e => {
+                                                            const newA = [...activities];
+                                                            newA[dIdx].items[iIdx].title = e.target.value;
+                                                            setActivities(newA);
+                                                        }} />
+                                                        <Textarea placeholder="Description" className="min-h-[80px] bg-background" value={item.description} onChange={e => {
+                                                            const newA = [...activities];
+                                                            newA[dIdx].items[iIdx].description = e.target.value;
+                                                            setActivities(newA);
+                                                        }} />
+                                                    </div>
+                                                ))}
+                                            </div>
                                         </Card>
                                     ))}
                                 </div>
@@ -575,15 +666,15 @@ export default function AdminDashboard() {
                                         Add Speaker
                                     </Button>
                                     {speakers.map((s, idx) => (
-                                        <Card key={idx} className="p-4 space-y-2">
+                                        <Card key={idx} className="p-4 space-y-3 bg-muted/20 border-primary/10">
                                             <div className="flex justify-between items-center">
-                                                <div className="flex items-center space-x-2">
-                                                    <div className="relative h-10 w-10">
+                                                <div className="flex items-center space-x-3">
+                                                    <div className="relative h-12 w-12 ring-2 ring-primary/20 rounded-full">
                                                         {s.imageFile ? (
                                                             <img src={URL.createObjectURL(s.imageFile)} className="h-full w-full object-cover rounded-full" />
                                                         ) : (
-                                                            <div className="h-full w-full bg-gray-100 rounded-full flex items-center justify-center">
-                                                                <User2 className="h-6 w-6 text-gray-400" />
+                                                            <div className="h-full w-full bg-primary/5 rounded-full flex items-center justify-center">
+                                                                <User2 className="h-6 w-6 text-primary/40" />
                                                             </div>
                                                         )}
                                                         <input
@@ -599,26 +690,26 @@ export default function AdminDashboard() {
                                                                 }
                                                             }}
                                                         />
-                                                        <label htmlFor={`speaker-img-${idx}`} className="absolute bottom-0 right-0 bg-primary text-white p-0.5 rounded-full cursor-pointer">
+                                                        <label htmlFor={`speaker-img-${idx}`} className="absolute -bottom-1 -right-1 bg-primary text-white p-1 rounded-full cursor-pointer shadow-sm hover:bg-primary/90 transition-colors">
                                                             <Plus className="h-3 w-3" />
                                                         </label>
                                                     </div>
-                                                    <Input placeholder="Name" value={s.name} className="flex-1" onChange={e => {
+                                                    <Input placeholder="Speaker Name" value={s.name} className="flex-1 bg-background" onChange={e => {
                                                         const newS = [...speakers];
                                                         newS[idx].name = e.target.value;
                                                         setSpeakers(newS);
                                                     }} />
                                                 </div>
-                                                <Button type="button" variant="ghost" size="sm" onClick={() => setSpeakers(speakers.filter((_, i) => i !== idx))} className="text-red-500">
+                                                <Button type="button" variant="ghost" size="sm" onClick={() => setSpeakers(speakers.filter((_, i) => i !== idx))} className="text-destructive hover:bg-destructive/10">
                                                     <Trash2 className="h-4 w-4" />
                                                 </Button>
                                             </div>
-                                            <Input placeholder="Role" value={s.role} onChange={e => {
+                                            <Input placeholder="Professional Role" value={s.role} className="bg-background" onChange={e => {
                                                 const newS = [...speakers];
                                                 newS[idx].role = e.target.value;
                                                 setSpeakers(newS);
                                             }} />
-                                            <textarea placeholder="Bio" className="w-full p-2 text-sm border rounded" value={s.bio} onChange={e => {
+                                            <Textarea placeholder="Short Bio" className="min-h-[80px] bg-background" value={s.bio} onChange={e => {
                                                 const newS = [...speakers];
                                                 newS[idx].bio = e.target.value;
                                                 setSpeakers(newS);
@@ -633,16 +724,16 @@ export default function AdminDashboard() {
                                         Add FAQ
                                     </Button>
                                     {faqs.map((f, idx) => (
-                                        <Card key={idx} className="p-4 space-y-2">
-                                            <div className="flex justify-between">
-                                                <Input placeholder="Question" value={f.question} onChange={e => {
+                                        <Card key={idx} className="p-4 space-y-3 bg-muted/20 border-primary/10">
+                                            <div className="flex justify-between items-start gap-2">
+                                                <Input placeholder="Question" className="bg-background flex-1" value={f.question} onChange={e => {
                                                     const newF = [...faqs];
                                                     newF[idx].question = e.target.value;
                                                     setFaqs(newF);
                                                 }} />
-                                                <Button type="button" variant="ghost" size="sm" onClick={() => setFaqs(faqs.filter((_, i) => i !== idx))}><Trash2 className="h-4 w-4" /></Button>
+                                                <Button type="button" variant="ghost" size="sm" onClick={() => setFaqs(faqs.filter((_, i) => i !== idx))} className="text-destructive hover:bg-destructive/10"><Trash2 className="h-4 w-4" /></Button>
                                             </div>
-                                            <textarea placeholder="Answer" className="w-full p-2 text-sm border rounded" value={f.answer} onChange={e => {
+                                            <Textarea placeholder="Detailed Answer" className="min-h-[80px] bg-background" value={f.answer} onChange={e => {
                                                 const newF = [...faqs];
                                                 newF[idx].answer = e.target.value;
                                                 setFaqs(newF);
@@ -652,17 +743,21 @@ export default function AdminDashboard() {
                                 </div>
                                 <div className="space-y-4 border-t pt-4">
                                     <h3 className="font-bold text-sm uppercase tracking-wider text-muted-foreground">Alignment & Goals</h3>
-                                    <div className="space-y-2">
-                                        <Label>Affiliation/Vision Title</Label>
-                                        <Input placeholder="Aligned with Europe’s Youth Vision" value={alignment.title} onChange={e => setAlignment({ ...alignment, title: e.target.value })} />
-                                        <Label>Affiliation Description</Label>
-                                        <textarea placeholder="Description" className="w-full p-2 text-sm border rounded" value={alignment.description} onChange={e => setAlignment({ ...alignment, description: e.target.value })} />
+                                    <div className="space-y-4">
+                                        <div className="space-y-2">
+                                            <Label className="text-primary font-semibold">Affiliation/Vision Title</Label>
+                                            <Input placeholder="Aligned with Europe’s Youth Vision" value={alignment.title} className="bg-background" onChange={e => setAlignment({ ...alignment, title: e.target.value })} />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label className="text-primary font-semibold">Affiliation Description</Label>
+                                            <Textarea placeholder="Explain how the event aligns with the vision..." className="bg-background min-h-[100px]" value={alignment.description} onChange={e => setAlignment({ ...alignment, description: e.target.value })} />
+                                        </div>
                                     </div>
                                     <div className="space-y-2 pt-2">
-                                        <Label>Key Features/Goals (one per line)</Label>
-                                        <textarea
+                                        <Label className="text-primary font-semibold">Key Features/Goals (one per line)</Label>
+                                        <Textarea
                                             placeholder="High-Impact Keynotes&#10;Interactive Workshops"
-                                            className="w-full p-2 text-sm border rounded min-h-[100px]"
+                                            className="min-h-[120px] bg-background"
                                             value={features.join('\n')}
                                             onChange={e => setFeatures(e.target.value.split('\n'))}
                                         />
@@ -671,11 +766,15 @@ export default function AdminDashboard() {
 
                                 <div className="space-y-4 border-t pt-4">
                                     <h3 className="font-bold text-sm uppercase tracking-wider text-muted-foreground">User Journey</h3>
-                                    <div className="space-y-2">
-                                        <Label>Arrival & Location Guide</Label>
-                                        <textarea placeholder="How to arrive, shuttle services..." className="w-full p-2 text-sm border rounded" value={journey.arrival} onChange={e => setJourney({ ...journey, arrival: e.target.value })} />
-                                        <Label>What to Expect</Label>
-                                        <textarea placeholder="Event guides, schedules..." className="w-full p-2 text-sm border rounded" value={journey.expectations} onChange={e => setJourney({ ...journey, expectations: e.target.value })} />
+                                    <div className="space-y-4">
+                                        <div className="space-y-2">
+                                            <Label className="text-primary font-semibold">Arrival & Location Guide</Label>
+                                            <Textarea placeholder="How to arrive, shuttle services..." className="bg-background min-h-[100px]" value={journey.arrival} onChange={e => setJourney({ ...journey, arrival: e.target.value })} />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label className="text-primary font-semibold">What to Expect</Label>
+                                            <Textarea placeholder="Event guides, schedules..." className="bg-background min-h-[100px]" value={journey.expectations} onChange={e => setJourney({ ...journey, expectations: e.target.value })} />
+                                        </div>
                                     </div>
                                 </div>
 
@@ -715,10 +814,17 @@ export default function AdminDashboard() {
                                         ))}
                                     </div>
                                 </div>
-                                <Button type="submit" className="w-full" disabled={isSubmitting || uploading}>
-                                    {(isSubmitting || uploading) ? <Loader2 className="animate-spin h-4 w-4 mr-2" /> : <Plus className="h-4 w-4 mr-2" />}
-                                    Create Event
-                                </Button>
+                                <div className="flex gap-2">
+                                    <Button type="submit" className="flex-1" disabled={isSubmitting || uploading}>
+                                        {(isSubmitting || uploading) ? <Loader2 className="animate-spin h-4 w-4 mr-2" /> : <Plus className="h-4 w-4 mr-2" />}
+                                        {editingEvent ? "Update Event" : "Create Event"}
+                                    </Button>
+                                    {editingEvent && (
+                                        <Button type="button" variant="outline" onClick={cancelEdit}>
+                                            Cancel
+                                        </Button>
+                                    )}
+                                </div>
                             </form>
                         </CardContent>
                     </Card>
@@ -746,12 +852,20 @@ export default function AdminDashboard() {
                                             </p>
                                             <p className="text-gray-600 line-clamp-2 text-sm">{event.description}</p>
                                         </div>
-                                        <button
-                                            onClick={() => deleteEvent(event.id)}
-                                            className="text-red-500 hover:text-red-700 p-2"
-                                        >
-                                            <Trash2 className="h-5 w-5" />
-                                        </button>
+                                        <div className="flex flex-col gap-2">
+                                            <button
+                                                onClick={() => handleEditClick(event)}
+                                                className="text-primary hover:text-primary/70 p-2"
+                                            >
+                                                <Edit2 className="h-5 w-5" />
+                                            </button>
+                                            <button
+                                                onClick={() => deleteEvent(event.id)}
+                                                className="text-red-500 hover:text-red-700 p-2"
+                                            >
+                                                <Trash2 className="h-5 w-5" />
+                                            </button>
+                                        </div>
                                     </CardContent>
                                 </Card>
                             ))
