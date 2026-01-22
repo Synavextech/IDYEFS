@@ -282,17 +282,26 @@ export default function AdminDashboard() {
             return [];
         }
 
-        console.log(`[Upload] Starting batch upload for ${selectedImages.length} gallery images...`);
+        if (selectedImages.length > 10) {
+            const msg = "Maximum 10 gallery images allowed.";
+            console.warn(`[Upload] ${msg}`);
+            toast({ title: "Upload limit", description: msg, variant: "destructive" });
+            throw new Error(msg);
+        }
+
+        console.log(`[Upload] Starting parallel upload for ${selectedImages.length} gallery images...`);
         setUploading(true);
         try {
-            for (const file of selectedImages) {
-                const url = await uploadSingleImage(file, "events");
-                urls.push(url);
-            }
-            console.log("[Upload] Batch upload completed successfully.");
+            const uploadPromises = selectedImages.map(file => uploadSingleImage(file, "events"));
+            const results = await Promise.all(uploadPromises);
+            urls.push(...results);
+            console.log("[Upload] Parallel batch upload completed successfully.");
         } catch (error: any) {
             console.error("[Upload] Batch upload failed:", error);
+            // Even if one fails, we might still have some URLs if we used Promise.allSettled, 
+            // but for consistency we fail the whole batch if any single upload fails.
             toast({ title: "Upload failed", description: error.message, variant: "destructive" });
+            throw error;
         } finally {
             setUploading(false);
         }

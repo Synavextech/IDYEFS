@@ -2,9 +2,10 @@ import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Loader2, Calendar, MapPin, ChevronDown, Award, Globe, HelpCircle, Bell } from "lucide-react";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { format, isBefore } from "date-fns";
 import { supabase } from "@/lib/supabase";
+import { useToast } from "@/hooks/use-toast";
 import HeroSection from "@/components/HeroSection";
 import Testimonials from "@/components/Testimonials";
 import JoinUs from "@/components/JoinUs";
@@ -16,17 +17,33 @@ export default function PastEvents() {
     // Parse event ID from URL
     const urlEventId = new URLSearchParams(window.location.search).get('id');
 
-    const { data: events, isLoading } = useQuery({
+    const { data: events, isLoading, error: fetchError } = useQuery({
         queryKey: ["events"],
         queryFn: async () => {
             const { data, error } = await supabase
                 .from('Event')
                 .select('*')
                 .order('date', { ascending: false });
-            if (error) throw error;
+            if (error) {
+                console.error("[Events] Supabase Fetch Error:", error);
+                throw error;
+            }
             return data;
-        }
+        },
+        retry: 1
     });
+
+    const { toast } = useToast();
+
+    useEffect(() => {
+        if (fetchError) {
+            toast({
+                title: "Failed to load events",
+                description: "There was a problem connecting to the database. Please refresh or check your connection.",
+                variant: "destructive"
+            });
+        }
+    }, [fetchError, toast]);
 
     const pastEvents = useMemo(() => {
         if (!events) return [];

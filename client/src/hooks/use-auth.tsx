@@ -44,15 +44,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
 
     useEffect(() => {
-        // Check initial session
-        supabase.auth.getSession().then(({ data: { session } }) => {
-            const currentUser = session?.user ?? null;
-            setUser(currentUser);
-            if (currentUser) {
-                fetchProfile(currentUser.id).then(setProfile);
+        const checkSession = async () => {
+            try {
+                const { data: { session }, error } = await supabase.auth.getSession();
+
+                if (error) {
+                    console.error("[Session] Error checking initial session:", error.message, error);
+                    setIsLoading(false);
+                    return;
+                }
+
+                const currentUser = session?.user ?? null;
+                console.log("[Session] Initial session state:", currentUser ? `Logged in as ${currentUser.email}` : "No active session");
+
+                setUser(currentUser);
+                if (currentUser) {
+                    const p = await fetchProfile(currentUser.id);
+                    setProfile(p);
+                }
+            } catch (err) {
+                console.error("[Session] Unexpected error during session check:", err);
+            } finally {
+                setIsLoading(false);
             }
-            setIsLoading(false);
-        });
+        };
+
+        checkSession();
 
         // Listen for changes
         const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
@@ -60,10 +77,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             const currentUser = session?.user ?? null;
             setUser(currentUser);
             if (currentUser) {
+                console.log(`[Auth] User detected: ${currentUser.email}, fetching profile...`);
                 // When auth state changes, fetch profile
                 const p = await fetchProfile(currentUser.id);
                 setProfile(p);
             } else {
+                console.log("[Auth] No user detected after state change.");
                 setProfile(null);
             }
             setIsLoading(false);

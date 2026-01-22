@@ -38,17 +38,31 @@ export default function UpcomingEvents() {
     const paymentStatus = urlParams.get('status');
     const bookingIdFromUrl = urlParams.get('bookingId');
 
-    const { data: events, isLoading } = useQuery({
+    const { data: events, isLoading, error: fetchError } = useQuery({
         queryKey: ["events"],
         queryFn: async () => {
             const { data, error } = await supabase
                 .from('Event')
                 .select('*')
                 .order('date', { ascending: true });
-            if (error) throw error;
+            if (error) {
+                console.error("[Events] Supabase Fetch Error:", error);
+                throw error;
+            }
             return data;
-        }
+        },
+        retry: 1
     });
+
+    useEffect(() => {
+        if (fetchError) {
+            toast({
+                title: "Failed to load events",
+                description: "There was a problem connecting to the database. Please refresh or check your connection.",
+                variant: "destructive"
+            });
+        }
+    }, [fetchError, toast]);
 
     // Check for successful payment redirect
     useEffect(() => {
