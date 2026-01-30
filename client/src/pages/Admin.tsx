@@ -146,7 +146,10 @@ function BlogManager() {
 
     const onSubmitBlog = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
-        if (!user) return;
+        if (!user) {
+            toast({ title: "Session Error", description: "You must be logged in to post.", variant: "destructive" });
+            return;
+        }
         setIsSubmitting(true);
 
         const formData = new FormData(e.currentTarget);
@@ -154,18 +157,28 @@ function BlogManager() {
         const content = formData.get('content') as string;
         const imageUrl = formData.get('imageUrl') as string;
 
-        const { error } = await supabase.from('BlogPost').insert({
-            title,
-            content,
-            imageUrl,
-            authorId: user.id
-        });
-        if (!error) {
+        try {
+            const { error } = await supabase.from('BlogPost').insert({
+                title,
+                content,
+                imageUrl,
+                authorId: user.id
+            });
+            if (error) throw error;
+
             toast({ title: "Blog posted!" });
             fetchBlogs();
             (e.target as HTMLFormElement).reset();
+        } catch (error: any) {
+            console.error("[Blog] Post failed:", error);
+            toast({
+                title: "Post failed",
+                description: error.message || "An unexpected error occurred",
+                variant: "destructive"
+            });
+        } finally {
+            setIsSubmitting(false);
         }
-        setIsSubmitting(false);
     };
 
     const deleteBlog = async (id: string) => {
@@ -207,6 +220,155 @@ function BlogManager() {
     );
 }
 
+function ProposalManager() {
+    const [proposals, setProposals] = useState<any[]>([]);
+    const { toast } = useToast();
+
+    useEffect(() => {
+        fetchProposals();
+    }, []);
+
+    const fetchProposals = async () => {
+        const { data, error } = await supabase
+            .from('Proposals')
+            .select('*, User(*), Event(*)')
+            .order('createdAt', { ascending: false });
+
+        if (error) {
+            console.error("Error fetching proposals:", error);
+            return;
+        }
+
+        // Lazy auto-approval check
+        const now = new Date();
+        const updates: any[] = [];
+        const processedData = data.map(p => {
+            if (p.status === 'PENDING' && p.autoApproveAt && new Date(p.autoApproveAt) < now) {
+                updates.push(supabase.from('Proposals').update({ status: 'APPROVED' }).eq('id', p.id));
+                return { ...p, status: 'APPROVED' };
+            }
+            return p;
+        });
+
+        if (updates.length > 0) {
+            await Promise.all(updates);
+            toast({ title: "Auto-approved proposals", description: `${updates.length} pending proposals were auto-approved due to time limit.` });
+        }
+
+        setProposals(processedData);
+    };
+
+    const updateStatus = async (id: string, status: string) => {
+        const { error } = await supabase.from('Proposals').update({ status }).eq('id', id);
+        if (error) {
+            toast({ title: "Error", description: error.message, variant: "destructive" });
+        } else {
+            toast({ title: "Status updated" });
+            fetchProposals();
+        }
+    };
+
+    return (
+        <div className="space-y-4">
+            <h2 className="text-xl font-bold text-primary mb-4">Event Proposals</h2>
+            <div className="grid gap-4">
+                {proposals.map(p => (
+                    <Card key={p.id}>
+                        <CardContent className="p-4 flex flex-col md:flex-row justify-between gap-4">
+                            <div>
+                                <div className="flex items-center gap-2 mb-1">
+                                    <h3 className="font-bold">{p.User?.name}</h3>
+                                    <span className={cn(
+                                        "text-[10px] px-2 py-0.5 rounded-full font-bold uppercase",
+                                        p.status === 'APPROVED' ? "bg-green-100 text-green-700" :
+                                            p.status === 'REJECTED' ? "bg-red-100 text-red-700" : "bg-yellow-100 text-yellow-700"
+                                    )}>{p.status}</span>
+                                </div>
+                                <p className="text-sm text-gray-500 mb-2">{p.User?.email} • Event: {p.Event?.title}</p>
+                                <p className="text-sm bg-slate-50 p-2 rounded border">{p.description}</p>
+                                {p.documentUrl && (
+                                    <a href={p.documentUrl} target="_blank" rel="noreferrer" className="text-xs text-primary underline mt-2 block">View Document</a>
+                                )}
+                            </div>
+                            <div className="flex flex-col gap-2 justify-center min-w-[120px]">
+                                <Button size="sm" className="bg-green-600 hover:bg-green-700" onClick={() => updateStatus(p.id, 'APPROVED')}>Approve</Button>
+                                <Button size="sm" variant="destructive" onClick={() => updateStatus(p.id, 'REJECTED')}>Reject</Button>
+                            </div>
+                        </CardContent>
+                    </Card>
+                ))}
+                {proposals.length === 0 && <p className="text-slate-500 italic">No proposals found.</p>}
+            </div>
+        </div>
+    );
+}
+
+function ApplicationManager() {
+    const [applications, setApplications] = useState<any[]>([]);
+    const { toast } = useToast();
+
+    useEffect(() => {
+        fetchApps();
+    }, []);
+
+    const fetchApps = async () => {
+        const { data, error } = await supabase
+            .from('Applications')
+            .select('*, User(*)')
+            .order('createdAt', { ascending: false });
+        if (!error) setApplications(data || []);
+    };
+
+    const updateStatus = async (id: string, status: string) => {
+        const { error } = await supabase.from('Applications').update({ status }).eq('id', id);
+        if (error) {
+            toast({ title: "Error", description: error.message, variant: "destructive" });
+        } else {
+            toast({ title: "Status updated" });
+            fetchApps();
+        }
+    };
+
+    return (
+        <div className="space-y-4">
+            <h2 className="text-xl font-bold text-primary mb-4">Speaker & Sponsor Applications</h2>
+            <div className="grid gap-4">
+                {applications.map(app => (
+                    <Card key={app.id}>
+                        <CardContent className="p-4 flex flex-col md:flex-row justify-between gap-4">
+                            <div>
+                                <div className="flex items-center gap-2 mb-1">
+                                    <h3 className="font-bold">{app.User?.name}</h3>
+                                    <span className="text-xs px-2 py-0.5 rounded bg-blue-100 text-blue-800 font-bold">{app.type}</span>
+                                    <span className={cn(
+                                        "text-[10px] px-2 py-0.5 rounded-full font-bold uppercase",
+                                        app.status === 'APPROVED' ? "bg-green-100 text-green-700" :
+                                            app.status === 'REJECTED' ? "bg-red-100 text-red-700" : "bg-yellow-100 text-yellow-700"
+                                    )}>{app.status}</span>
+                                </div>
+                                <p className="text-sm text-gray-500 mb-2">{app.User?.email}</p>
+                                <p className="text-sm bg-slate-50 p-2 rounded border mb-2">{app.description}</p>
+                                <div className="flex gap-4 text-xs text-gray-500">
+                                    <span>Donation: <strong>${app.donationAmount}</strong></span>
+                                    <span>Payment: <strong className={app.paymentStatus === 'PAID' ? "text-green-600" : "text-yellow-600"}>{app.paymentStatus}</strong></span>
+                                </div>
+                                {app.documentUrl && (
+                                    <a href={app.documentUrl} target="_blank" rel="noreferrer" className="text-xs text-primary underline mt-2 block">View Document</a>
+                                )}
+                            </div>
+                            <div className="flex flex-col gap-2 justify-center min-w-[120px]">
+                                <Button size="sm" className="bg-green-600 hover:bg-green-700" onClick={() => updateStatus(app.id, 'APPROVED')}>Approve</Button>
+                                <Button size="sm" variant="destructive" onClick={() => updateStatus(app.id, 'REJECTED')}>Reject</Button>
+                            </div>
+                        </CardContent>
+                    </Card>
+                ))}
+                {applications.length === 0 && <p className="text-slate-500 italic">No applications found.</p>}
+            </div>
+        </div>
+    );
+}
+
 export default function AdminDashboard() {
     const { user, profile } = useAuth();
     const { toast } = useToast();
@@ -216,7 +378,7 @@ export default function AdminDashboard() {
     const [uploading, setUploading] = useState(false);
     const [selectedImages, setSelectedImages] = useState<File[]>([]);
     const [imagePreviews, setImagePreviews] = useState<string[]>([]);
-    const [activeTab, setActiveTab] = useState<'events' | 'blogs' | 'visa'>('events');
+    const [activeTab, setActiveTab] = useState<'events' | 'blogs' | 'visa' | 'proposals' | 'applications'>('events');
     const [editingEvent, setEditingEvent] = useState<Event | null>(null);
 
     useEffect(() => {
@@ -260,9 +422,16 @@ export default function AdminDashboard() {
         const fileName = `${Math.random()}.${fileExt}`;
         const filePath = `${folder}/${fileName}`;
 
-        const { error: uploadError } = await supabase.storage
+        // Add a 30s timeout to prevent infinite hangs
+        const uploadPromise = supabase.storage
             .from('event-media')
             .upload(filePath, file);
+
+        const timeoutPromise = new Promise((_, reject) =>
+            setTimeout(() => reject(new Error(`Upload timed out for ${file.name}`)), 30000)
+        );
+
+        const { error: uploadError } = await Promise.race([uploadPromise, timeoutPromise]) as any;
 
         if (uploadError) {
             console.error(`[Upload] Error uploading ${file.name}:`, uploadError);
@@ -314,6 +483,7 @@ export default function AdminDashboard() {
     const [speakers, setSpeakers] = useState<any[]>([]);
     const [faqs, setFaqs] = useState<any[]>([]);
     const [features, setFeatures] = useState<string[]>([]);
+    const [benefits, setBenefits] = useState<any[]>([]);
     const [alignment, setAlignment] = useState({ title: "", description: "" });
     const [journey, setJourney] = useState({ arrival: "", expectations: "" });
 
@@ -323,6 +493,7 @@ export default function AdminDashboard() {
         setSpeakers(event.speakers || []);
         setFaqs(event.faqs || []);
         setFeatures(event.features || []);
+        setBenefits(event.benefits || []);
         setAlignment(event.alignment || { title: "", description: "" });
         setJourney(event.journey || { arrival: "", expectations: "" });
 
@@ -359,6 +530,7 @@ export default function AdminDashboard() {
         setSpeakers([]);
         setFaqs([]);
         setFeatures([]);
+        setBenefits([]);
         setAlignment({ title: "", description: "" });
         setJourney({ arrival: "", expectations: "" });
         setSelectedImages([]);
@@ -439,6 +611,7 @@ export default function AdminDashboard() {
                         speakers: speakersWithImages,
                         faqs,
                         features,
+                        benefits,
                         alignment,
                         journey,
                         self_funded_seats: parseInt(selfFundedSeats) || 0,
@@ -468,6 +641,7 @@ export default function AdminDashboard() {
                         speakers: speakersWithImages,
                         faqs,
                         features,
+                        benefits,
                         alignment,
                         journey,
                         self_funded_seats: parseInt(selfFundedSeats) || 0,
@@ -494,6 +668,7 @@ export default function AdminDashboard() {
             setSpeakers([]);
             setFaqs([]);
             setFeatures([]);
+            setBenefits([]);
             setAlignment({ title: "", description: "" });
             setJourney({ arrival: "", expectations: "" });
             console.log("[Submit] Form submission completed successfully.");
@@ -555,8 +730,25 @@ export default function AdminDashboard() {
                     >
                         Visa Requests
                     </Button>
+                    <Button
+                        variant={activeTab === 'proposals' ? 'default' : 'outline'}
+                        onClick={() => setActiveTab('proposals')}
+                    >
+                        Proposals
+                    </Button>
+                    <Button
+                        variant={activeTab === 'applications' ? 'default' : 'outline'}
+                        onClick={() => setActiveTab('applications')}
+                    >
+                        Applications
+                    </Button>
                 </div>
             </div>
+
+            {activeTab === 'proposals' && <ProposalManager />}
+            {activeTab === 'applications' && <ApplicationManager />}
+            {activeTab === 'visa' && <VisaInvitationManager />}
+            {activeTab === 'blogs' && <BlogManager />}
 
             {activeTab === 'events' && (
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -601,6 +793,51 @@ export default function AdminDashboard() {
                                         <Label htmlFor="fully_funded_seats">Fully Funded Seats</Label>
                                         <Input id="fully_funded_seats" name="fully_funded_seats" type="number" defaultValue="0" />
                                     </div>
+                                </div>
+
+                                <div className="space-y-4 border-t pt-4">
+                                    <h3 className="font-bold text-sm uppercase tracking-wider text-muted-foreground">Admission Benefits</h3>
+                                    <Button type="button" variant="outline" size="sm" onClick={() => setBenefits([...benefits, { category: 'SELF_FUNDED', description: "" }])}>
+                                        Add Benefit
+                                    </Button>
+                                    {benefits.map((b, idx) => (
+                                        <Card key={idx} className="p-4 space-y-3 bg-muted/20 border-primary/10">
+                                            <div className="flex justify-between items-center gap-2">
+                                                <div className="space-y-1 flex-1">
+                                                    <label className="text-xs font-semibold text-muted-foreground">Category</label>
+                                                    <select
+                                                        className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                                                        value={b.category}
+                                                        onChange={e => {
+                                                            const newB = [...benefits];
+                                                            newB[idx].category = e.target.value;
+                                                            setBenefits(newB);
+                                                        }}
+                                                    >
+                                                        <option value="SELF_FUNDED">Self Funded</option>
+                                                        <option value="PARTIALLY_FUNDED">Partially Funded</option>
+                                                        <option value="FULLY_FUNDED">Fully Funded</option>
+                                                    </select>
+                                                </div>
+                                                <Button type="button" variant="ghost" size="sm" onClick={() => setBenefits(benefits.filter((_, i) => i !== idx))} className="text-destructive hover:bg-destructive/10 mt-6">
+                                                    <Trash2 className="h-4 w-4" />
+                                                </Button>
+                                            </div>
+                                            <div className="space-y-1">
+                                                <label className="text-xs font-semibold text-muted-foreground">Description</label>
+                                                <Input
+                                                    placeholder="e.g. Flight + Accommodation included"
+                                                    value={b.description}
+                                                    className="bg-background"
+                                                    onChange={e => {
+                                                        const newB = [...benefits];
+                                                        newB[idx].description = e.target.value;
+                                                        setBenefits(newB);
+                                                    }}
+                                                />
+                                            </div>
+                                        </Card>
+                                    ))}
                                 </div>
                                 <div className="space-y-2">
                                     <Label htmlFor="location">Location</Label>

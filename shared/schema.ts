@@ -17,6 +17,8 @@ export const insertEventSchema = z.object({
     self_funded_seats: z.number().default(0),
     partially_funded_seats: z.number().default(0),
     fully_funded_seats: z.number().default(0),
+    benefits: z.array(z.any()).default([]),
+    requires_proposal: z.boolean().default(false),
 });
 
 export type InsertEvent = z.infer<typeof insertEventSchema>;
@@ -51,6 +53,7 @@ export interface Event extends InsertEvent {
     self_funded_seats: number;
     partially_funded_seats: number;
     fully_funded_seats: number;
+    benefits: any[]; // Or specify a more detailed type if needed
 }
 
 export interface User {
@@ -89,4 +92,47 @@ export interface VisaInvitation {
     updatedAt: string;
     user?: User;
     event?: Event;
+}
+
+// Proposals
+export const insertProposalSchema = z.object({
+    eventId: z.string(),
+    description: z.string().min(50, "Description must be at least 50 characters"),
+    documentUrl: z.string().optional(),
+});
+
+export interface Proposal {
+    id: string;
+    userId: string;
+    eventId: string;
+    description: string;
+    documentUrl?: string;
+    status: 'PENDING' | 'APPROVED' | 'REJECTED';
+    autoApproveAt?: string;
+    createdAt: string;
+    updatedAt: string;
+    user?: User;
+    event?: Event;
+}
+
+// Applications
+export const insertApplicationSchema = z.object({
+    type: z.enum(['SPEAKER', 'SPONSOR', 'NEXTGEN', 'GLOBAL_FORUM']),
+    description: z.string().min(50, "Description must be at least 50 characters"),
+    documentUrl: z.string().optional(),
+    donationAmount: z.number().min(100, "Minimum donation is $100"),
+});
+
+export interface Application {
+    id: string;
+    userId: string;
+    type: 'SPEAKER' | 'SPONSOR' | 'NEXTGEN' | 'GLOBAL_FORUM';
+    description: string;
+    documentUrl?: string;
+    donationAmount: number;
+    paymentStatus: 'PENDING' | 'PAID';
+    status: 'PENDING' | 'APPROVED' | 'REJECTED';
+    createdAt: string;
+    updatedAt: string;
+    user?: User;
 }

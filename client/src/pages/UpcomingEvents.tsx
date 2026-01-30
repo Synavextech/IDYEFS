@@ -16,18 +16,33 @@ import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
 import { loadStripe } from "@stripe/stripe-js";
 import PaymentSelection from "@/components/payments/PaymentSelection";
 import { generateTicketPDF } from "@/lib/ticket-generator";
+import { ApplicationForm } from "@/components/ApplicationForms";
+import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Upload } from "lucide-react";
 
 const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY);
 
 export default function UpcomingEvents() {
-    const { user } = useAuth();
+    const { user, isLoading } = useAuth();
     const { toast } = useToast();
     const [location, setLocation] = useLocation();
     const [bookingEvent, setBookingEvent] = useState<any | null>(null);
     const [bookingCategory, setBookingCategory] = useState<'SELF_FUNDED' | 'PARTIALLY_FUNDED' | 'FULLY_FUNDED'>('SELF_FUNDED');
     const [visaInvitationEvent, setVisaInvitationEvent] = useState<any | null>(null);
-    const [paymentModal, setPaymentModal] = useState<{ open: boolean; amount: number; bookingId: string; type: 'event' | 'visa' } | null>(null);
+    const [paymentModal, setPaymentModal] = useState<{ open: boolean; amount: number; bookingId: string; type: 'event' | 'visa' | 'application' } | null>(null);
     const [isPaymentProcessing, setIsPaymentProcessing] = useState(false);
+
+    // Application Form State
+    const [applicationModal, setApplicationModal] = useState<{ open: boolean; type: 'SPEAKER' | 'SPONSOR' | 'NEXTGEN' | 'GLOBAL_FORUM'; title: string } | null>(null);
+
+    // Proposal State
+    const [proposalModal, setProposalModal] = useState<boolean>(false);
+    const [proposalDescription, setProposalDescription] = useState("");
+    const [proposalFile, setProposalFile] = useState<File | null>(null);
+    const [existingProposal, setExistingProposal] = useState<any>(null);
+    const [submittingProposal, setSubmittingProposal] = useState(false);
 
     // Countdown state
     const [timeLeft, setTimeLeft] = useState<{ days: number; hours: number; minutes: number; seconds: number } | null>(null);
@@ -38,7 +53,7 @@ export default function UpcomingEvents() {
     const paymentStatus = urlParams.get('status');
     const bookingIdFromUrl = urlParams.get('bookingId');
 
-    const { data: events, isLoading, error: fetchError } = useQuery({
+    const { data: events, isLoading: eventsLoading, error: fetchError } = useQuery({
         queryKey: ["events"],
         queryFn: async () => {
             const { data, error } = await supabase
@@ -51,8 +66,11 @@ export default function UpcomingEvents() {
             }
             return data;
         },
-        retry: 1
+        retry: 1,
     });
+
+
+
 
     useEffect(() => {
         if (fetchError) {
@@ -122,6 +140,50 @@ export default function UpcomingEvents() {
         }
     }
 
+    const handleApplicationSuccess = (applicationId: string, amount: number) => {
+        setPaymentModal({
+            open: true,
+            amount,
+            bookingId: applicationId,
+            type: 'application'
+        });
+    };
+
+    const submitProposal = async () => {
+        if (!user || !bookingEvent) return;
+        setSubmittingProposal(true);
+        try {
+            let docUrl = null;
+            if (proposalFile) {
+                const fileExt = proposalFile.name.split('.').pop();
+                const fileName = `proposals/${user.id}/${Date.now()}.${fileExt}`;
+                const { error: uploadError } = await supabase.storage.from('documents').upload(fileName, proposalFile);
+                if (uploadError) throw uploadError;
+                const { data } = supabase.storage.from('documents').getPublicUrl(fileName);
+                docUrl = data.publicUrl;
+            }
+
+            const { error } = await supabase.from('Proposals').insert({
+                userId: user.id,
+                eventId: bookingEvent.id,
+                description: proposalDescription,
+                documentUrl: docUrl,
+                status: 'PENDING'
+            });
+
+            if (error) throw error;
+
+            toast({ title: "Proposal Submitted", description: "Your proposal is under review. You will be notified typically within 5 days." });
+            setProposalModal(false);
+            setBookingEvent(null); // Close booking modal
+        } catch (error: any) {
+            toast({ title: "Error", description: error.message, variant: "destructive" });
+        } finally {
+            setSubmittingProposal(false);
+        }
+    };
+
+
     const upcomingEvents = useMemo(() => {
         if (!events) return [];
         const now = new Date();
@@ -135,6 +197,25 @@ export default function UpcomingEvents() {
         if (!urlEventId || !events) return null;
         return events.find((e: any) => e.id === urlEventId);
     }, [urlEventId, events]);
+
+    // Fetch user's existing proposal for the selected event
+    useEffect(() => {
+        if (!user || !selectedEvent) {
+            setExistingProposal(null);
+            return;
+        }
+
+        const fetchProposal = async () => {
+            const { data } = await supabase
+                .from('Proposals')
+                .select('*')
+                .eq('userId', user.id)
+                .eq('eventId', selectedEvent.id)
+                .maybeSingle();
+            setExistingProposal(data);
+        };
+        fetchProposal();
+    }, [user, selectedEvent]);
 
     useEffect(() => {
         if (!selectedEvent) return;
@@ -253,7 +334,7 @@ export default function UpcomingEvents() {
         }
     });
 
-    if (isLoading) return <div className="flex justify-center py-40"><Loader2 className="animate-spin h-12 w-12 text-primary" /></div>;
+    if (eventsLoading || isLoading) return <div className="flex justify-center py-40"><Loader2 className="animate-spin h-12 w-12 text-primary" /></div>;
 
     const mainContent = (
         <div className="flex flex-col min-h-screen">
@@ -353,10 +434,10 @@ export default function UpcomingEvents() {
                                     </h2>
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                         {[
-                                            { title: "Become a Speaker", icon: MessageCircle, color: "bg-blue-500", desc: "Share your expertise with a global audience." },
-                                            { title: "Join as Sponsor", icon: Globe, color: "bg-purple-500", desc: "Support the next generation of leaders." },
-                                            { title: "NextGenLeaders", icon: Users, color: "bg-amber-500", desc: "Our premium leadership incubator program." },
-                                            { title: "#GlobalYouthForum", icon: Globe, color: "bg-emerald-500", desc: "Become a regional champion for change." }
+                                            { title: "Become a Speaker", icon: MessageCircle, color: "bg-blue-500", desc: "Share your expertise with a global audience.", type: 'SPEAKER' },
+                                            { title: "Join as Sponsor", icon: Globe, color: "bg-purple-500", desc: "Support the next generation of leaders.", type: 'SPONSOR' },
+                                            { title: "NextGenLeaders", icon: Users, color: "bg-amber-500", desc: "Our premium leadership incubator program.", type: 'NEXTGEN' },
+                                            { title: "#GlobalYouthForum", icon: Globe, color: "bg-emerald-500", desc: "Become a regional champion for change.", type: 'GLOBAL_FORUM' }
                                         ].map((item, i) => (
                                             <div key={i} className="p-6 rounded-2xl border border-slate-100 dark:border-slate-800 hover:shadow-lg transition-all">
                                                 <div className={`${item.color} w-10 h-10 rounded-xl flex items-center justify-center text-white mb-4`}>
@@ -364,9 +445,22 @@ export default function UpcomingEvents() {
                                                 </div>
                                                 <h4 className="font-bold mb-2">{item.title}</h4>
                                                 <p className="text-slate-500 text-sm leading-relaxed">{item.desc}</p>
-                                                <Button variant="link" className="p-0 h-auto mt-4 text-primary font-bold">Apply Now <ArrowRight className="ml-1 h-3 w-3" /></Button>
+                                                <Button
+                                                    variant="link"
+                                                    className="p-0 h-auto mt-4 text-primary font-bold"
+                                                    onClick={() => {
+                                                        if (!user) {
+                                                            setLocation(`/auth?redirectTo=${encodeURIComponent(window.location.pathname + window.location.search)}`);
+                                                            return;
+                                                        }
+                                                        setApplicationModal({ open: true, type: item.type as any, title: item.title });
+                                                    }}
+                                                >
+                                                    Apply Now <ArrowRight className="ml-1 h-3 w-3" />
+                                                </Button>
                                             </div>
                                         ))}
+
                                     </div>
                                 </div>
                             </div>
@@ -434,7 +528,7 @@ export default function UpcomingEvents() {
                                         <Button
                                             key={opt.category}
                                             size="lg"
-                                            className="bg-white text-primary hover:bg-slate-50 h-32 flex flex-col items-center justify-center rounded-3xl group relative overflow-hidden"
+                                            className="bg-white text-primary hover:bg-slate-50 h-auto min-h-[140px] py-6 flex flex-col items-center justify-center rounded-3xl group relative overflow-hidden"
                                             onClick={() => {
                                                 setBookingCategory(opt.category as any);
                                                 setBookingEvent(selectedEvent);
@@ -443,7 +537,14 @@ export default function UpcomingEvents() {
                                         >
                                             <span className="text-xl font-bold">{opt.label}</span>
                                             <span className="text-sm font-medium opacity-70 mb-2">{timeLeft ? opt.desc : "Registration Closed"}</span>
-                                            <span className="text-2xl font-black">${opt.price.toFixed(2)}</span>
+                                            <div className="flex flex-col items-center gap-1 my-2">
+                                                {selectedEvent.benefits?.filter((b: any) => b.category === opt.category).map((b: any, i: number) => (
+                                                    <span key={i} className="text-xs text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full flex items-center gap-1">
+                                                        <CheckCircle className="h-3 w-3 text-emerald-500" /> {b.description}
+                                                    </span>
+                                                ))}
+                                            </div>
+                                            <span className="text-2xl font-black mt-2">${opt.price.toFixed(2)}</span>
                                             <Ticket className="absolute bottom-2 right-2 h-4 w-4 opacity-10 rotate-12 group-hover:scale-150 transition-transform" />
                                         </Button>
                                     ))}
@@ -633,10 +734,12 @@ export default function UpcomingEvents() {
                                                     className="w-full h-12 text-lg font-bold group/btn"
                                                     onClick={(e) => { e.stopPropagation(); setBookingEvent(event); }}
                                                 >
-                                                    Book Your Spot <Ticket className="ml-2 h-5 w-5 transition-transform group-hover/btn:rotate-12" />
+                                                    {event.requires_proposal ? "Submit Proposal / Details" : "Book Your Spot"}
+                                                    <Ticket className="ml-2 h-5 w-5 transition-transform group-hover/btn:rotate-12" />
                                                 </Button>
                                             </CardFooter>
                                         </Card>
+
                                     ))}
                                 </div>
                             ) : (
@@ -691,6 +794,18 @@ export default function UpcomingEvents() {
                                         </div>
                                     ))}
                                 </div>
+                                <div className="mt-4 p-4 bg-slate-50 rounded-xl">
+                                    <h5 className="font-bold text-sm mb-2">Benefits for {bookingCategory.replace('_', ' ')}:</h5>
+                                    {bookingEvent.benefits?.filter((b: any) => b.category === bookingCategory).map((b: any, i: number) => (
+                                        <div key={i} className="flex gap-2 text-sm text-slate-600 items-start">
+                                            <CheckCircle className="h-4 w-4 text-emerald-500 mt-0.5 flex-shrink-0" />
+                                            <span>{b.description}</span>
+                                        </div>
+                                    ))}
+                                    {(!bookingEvent.benefits || bookingEvent.benefits.length === 0) && (
+                                        <p className="text-xs text-slate-500 italic">No specific benefits listed.</p>
+                                    )}
+                                </div>
                             </div>
                             <div className="flex gap-4 mt-6">
                                 <Button variant="outline" className="flex-1 h-12 rounded-xl" onClick={() => setBookingEvent(null)}>Cancel</Button>
@@ -699,18 +814,75 @@ export default function UpcomingEvents() {
                                         setLocation(`/auth?redirectTo=${encodeURIComponent(window.location.pathname + window.location.search)}`);
                                         return;
                                     }
+
+                                    // Check proposal requirement
+                                    if (bookingEvent.requires_proposal) {
+                                        if (existingProposal?.status === 'APPROVED') {
+                                            // Proceed to booking
+                                        } else if (existingProposal?.status === 'PENDING') {
+                                            toast({ title: "Pending Approval", description: "Your proposal is still under review." });
+                                            return;
+                                        } else if (existingProposal?.status === 'REJECTED') {
+                                            toast({ title: "Proposal Rejected", description: "Unfortunately your proposal was not accepted.", variant: "destructive" });
+                                            return;
+                                        } else {
+                                            // No proposal, open proposal modal
+                                            setProposalModal(true);
+                                            return;
+                                        }
+                                    }
+
                                     const price = bookingCategory === 'SELF_FUNDED' ? bookingEvent.price :
                                         bookingCategory === 'PARTIALLY_FUNDED' ? bookingEvent.price * 0.75 :
                                             bookingEvent.price * 0.5;
                                     bookingMutation.mutate({ eventId: bookingEvent.id, category: bookingCategory, amount: price });
                                 }} disabled={bookingMutation.isPending}>
-                                    {bookingMutation.isPending ? "Starting Booking..." : "Proceed to Payment"}
+                                    {bookingMutation.isPending ? "Starting Booking..." : bookingEvent.requires_proposal && !existingProposal ? "Submit Proposal First" : "Proceed to Payment"}
                                 </Button>
                             </div>
                         </div>
                     )}
                 </DialogContent>
             </Dialog>
+
+            {/* Proposal Dialog */}
+            <Dialog open={proposalModal} onOpenChange={setProposalModal}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Submit Event Proposal</DialogTitle>
+                        <CardDescription>To attend this event, please submit a proposal of your project idea.</CardDescription>
+                    </DialogHeader>
+                    <div className="space-y-4">
+                        <div className="space-y-2">
+                            <Label>Project Description</Label>
+                            <Textarea
+                                value={proposalDescription}
+                                onChange={(e) => setProposalDescription(e.target.value)}
+                                placeholder="Describe your project idea..."
+                                className="min-h-[100px]"
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <Label>Document (Optional)</Label>
+                            <Input type="file" onChange={(e) => setProposalFile(e.target.files?.[0] || null)} />
+                        </div>
+                        <Button onClick={submitProposal} disabled={submittingProposal} className="w-full">
+                            {submittingProposal ? <Loader2 className="animate-spin" /> : "Submit Proposal"}
+                        </Button>
+                    </div>
+                </DialogContent>
+            </Dialog>
+
+            {applicationModal && (
+                <ApplicationForm
+                    open={applicationModal.open}
+                    onOpenChange={(val) => !val && setApplicationModal(null)}
+                    type={applicationModal.type}
+                    title={applicationModal.title}
+                    onSuccess={handleApplicationSuccess}
+                />
+            )}
+
 
             {/* Visa Invitation Dialog */}
             <Dialog open={!!visaInvitationEvent} onOpenChange={() => setVisaInvitationEvent(null)}>

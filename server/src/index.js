@@ -34,40 +34,57 @@ app.get('/api/health', (req, res) => {
 app.post('/api/create-checkout-session', async (req, res) => {
     const { eventId, category, amount, userId, bookingId, type = 'event' } = req.body;
     try {
-        // Check if event has already passed
-        const { data: eventData, error: eventError } = await supabase
-            .from('Event')
-            .select('date')
-            .eq('id', eventId)
-            .single();
+        let productData = {};
 
-        if (eventError || !eventData) {
-            console.error('Event fetch error:', eventError);
-            return res.status(404).json({ error: "Event not found" });
-        }
+        if (type === 'event') {
+            // Check if event has already passed
+            const { data: eventData, error: eventError } = await supabase
+                .from('Event')
+                .select('date')
+                .eq('id', eventId)
+                .single();
 
-        const eventDate = new Date(eventData.date);
-        const now = new Date();
-        if (eventDate < now) {
-            return res.status(400).json({ error: "This event has already passed. Registration is closed." });
+            if (eventError || !eventData) {
+                console.error('Event fetch error:', eventError);
+                return res.status(404).json({ error: "Event not found" });
+            }
+
+            const eventDate = new Date(eventData.date);
+            const now = new Date();
+            if (eventDate < now) {
+                return res.status(400).json({ error: "This event has already passed. Registration is closed." });
+            }
+
+            productData = {
+                name: `Event Booking: ${eventId}`,
+                description: `Category: ${category}`,
+            };
+        } else if (type === 'visa') {
+            productData = {
+                name: `Visa Invitation Request: ${eventId}`,
+                description: 'Official Visa Invitation Letter',
+            };
+        } else if (type === 'application') {
+            productData = {
+                name: `Application Donation`,
+                description: `Donation for Application`,
+            };
         }
 
         const metadata = {
             bookingId,
             userId,
-            eventId,
+            eventId: eventId || 'N/A',
             type
         };
 
         const session = await stripe.checkout.sessions.create({
             payment_method_types: ['card'],
+            customer_email: req.body.email, // If available
             line_items: [{
                 price_data: {
                     currency: 'usd',
-                    product_data: {
-                        name: type === 'visa' ? `Visa Invitation Request: ${eventId}` : `Event Booking: ${eventId}`,
-                        description: type === 'visa' ? 'Official Visa Invitation Letter' : `Category: ${category}`,
-                    },
+                    product_data: productData,
                     unit_amount: Math.round(amount * 100),
                 },
                 quantity: 1,
@@ -104,6 +121,8 @@ app.post('/api/webhook', express.raw({ type: 'application/json' }), async (req, 
                 await supabase.from('Booking').update({ status: 'CONFIRMED' }).eq('id', bookingId);
             } else if (type === 'visa') {
                 await supabase.from('VisaInvitation').update({ status: 'PAID', paymentStatus: 'PAID' }).eq('id', bookingId);
+            } else if (type === 'application') {
+                await supabase.from('Applications').update({ status: 'APPROVED', paymentStatus: 'PAID' }).eq('id', bookingId);
             }
             console.log(`Payment confirmed and DB updated for ${type} ${bookingId}`);
         } catch (dbError) {
@@ -119,14 +138,14 @@ app.post('/api/verify-paypal-order', async (req, res) => {
     try {
         const { orderId, bookingId, type } = req.body;
 
-        // In a real app, verify with PayPal API here
-        // For now, we trust the client-side success and update the status
-
         if (type === 'event') {
             const { error } = await supabase.from('Booking').update({ status: 'CONFIRMED' }).eq('id', bookingId);
             if (error) throw error;
         } else if (type === 'visa') {
             const { error } = await supabase.from('VisaInvitation').update({ status: 'PAID', paymentStatus: 'PAID' }).eq('id', bookingId);
+            if (error) throw error;
+        } else if (type === 'application') {
+            const { error } = await supabase.from('Applications').update({ status: 'APPROVED', paymentStatus: 'PAID' }).eq('id', bookingId);
             if (error) throw error;
         }
 
