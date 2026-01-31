@@ -49,6 +49,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     useEffect(() => {
         let mounted = true;
 
+        // Helper to fetch and set profile
+        const loadUserAndProfile = async (sessionUser: any) => {
+            if (!mounted) return;
+
+            setUser(sessionUser);
+
+            if (sessionUser) {
+                // Only fetch profile if we don't have it or if it's a different user
+                // However, for simplicity and correctness on login, we fetch it.
+                // We can optimize by checking if profile.id === sessionUser.id in a real app, 
+                // but here we just want to avoid the "hang" from the event listener race.
+                const p = await fetchProfile(sessionUser.id);
+                if (mounted) {
+                    setProfile(p);
+                }
+            } else {
+                if (mounted) {
+                    setProfile(null);
+                }
+            }
+        };
+
         const initializeAuth = async () => {
             try {
                 // Get initial session
@@ -56,17 +78,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
                 if (error) {
                     console.error("[Session] Error checking initial session:", error);
-                    // Don't block app, just assume logged out
                 }
 
                 if (mounted) {
                     const currentUser = session?.user ?? null;
-                    setUser(currentUser);
-
-                    if (currentUser) {
-                        const p = await fetchProfile(currentUser.id);
-                        if (mounted) setProfile(p);
-                    }
+                    await loadUserAndProfile(currentUser);
                 }
             } catch (err) {
                 console.error("[Session] Unexpected error during initialization:", err);
@@ -77,31 +93,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         initializeAuth();
 
-        // Listen for changes
         const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
             console.log(`[Auth] Auth state changed: ${event}`);
 
             if (!mounted) return;
 
             const currentUser = session?.user ?? null;
-            setUser(currentUser);
-            setIsLoading(true); // Temporarily set loading while we fetch profile
 
-            if (currentUser) {
-                // Fetch profile
-                const p = await fetchProfile(currentUser.id);
-                if (mounted) {
-                    setProfile(p);
-                    setIsLoading(false);
+            // optimize: handle specific events
+            if (event === 'SIGNED_IN' || event === 'USER_UPDATED') {
+                // For sign in/update, we want to ensure profile is loaded/updated
+                setUser(currentUser);
+                setIsLoading(true);
+                await loadUserAndProfile(currentUser);
+                if (mounted) setIsLoading(false);
+            } else if (event === 'SIGNED_OUT') {
+                setUser(null);
+                setProfile(null);
+                setIsLoading(false);
+                queryClient.clear();
+            } else if (event === 'TOKEN_REFRESHED') {
+                // FAST PATH: Just update the user/session, do NOT fetch profile or toggle loading
+                // This prevents the "hang" on tab switch or generic token refresh
+                setUser(currentUser);
+            } else if (event === 'INITIAL_SESSION') {
+                // Usually handled by initializeAuth, but if it fires late, handle it safely
+                // If we are already loading, this might be the first firing.
+                // safe to just update state if needed, but often redundant.
+                // We'll treat it like a silent update if we already have a user, or a full load if we don't.
+                if (!user && currentUser) {
+                    await loadUserAndProfile(currentUser);
                 }
-                // Invalidate queries to refresh data
-                queryClient.invalidateQueries();
-            } else {
-                if (mounted) {
-                    setProfile(null);
-                    setIsLoading(false);
-                }
-                queryClient.clear(); // Clear cache on logout
             }
         });
 

@@ -78,8 +78,8 @@ export default function AuthPage() {
         <div className="min-h-[90vh] flex items-center justify-center bg-slate-50 p-4 pt-20">
             <Card className="w-full max-w-md shadow-2xl border-none rounded-3xl overflow-hidden">
                 <div className="h-32 bg-primary flex flex-col items-center justify-center p-8 text-white">
-                    <h2 className="text-3xl font-bold tracking-tighter">IYDEF</h2>
-                    <p className="text-xs opacity-80 uppercase tracking-widest mt-1">Foundation</p>
+                    <h2 className="text-3xl font-bold tracking-tighter">WYC</h2>
+                    <p className="text-xs opacity-80 uppercase tracking-widest mt-1">World Youth Centre</p>
                 </div>
                 <CardHeader className="text-center pt-8">
                     <CardTitle className="text-2xl font-bold">

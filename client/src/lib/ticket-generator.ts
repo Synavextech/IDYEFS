@@ -23,12 +23,12 @@ export const generateTicketPDF = (data: TicketData) => {
     doc.setTextColor(255, 255, 255);
     doc.setFontSize(24);
     doc.setFont('helvetica', 'bold');
-    doc.text('IYDEF', 20, 30);
+    doc.text('WYC', 20, 30);
 
     doc.setFontSize(12);
     doc.setFont('helvetica', 'normal');
-    doc.text('International Youth Development', 20, 38);
-    doc.text('& Empowerment Forum', 20, 44);
+    doc.text('World Youth Centre', 20, 38);
+    // doc.text('& Empowerment Forum', 20, 44);
 
     // Ticket Header
     doc.setFontSize(30);

@@ -109,12 +109,12 @@ export default function About() {
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
                         <div className="relative group">
                             <div className="absolute -inset-4 bg-primary/10 rounded-3xl blur-2xl group-hover:bg-primary/20 transition-colors" />
-                            <img src="/images/event.png" alt="IYDEF in Action" className="relative rounded-2xl shadow-2xl border border-slate-100" />
+                            <img src="/images/event.png" alt="WYC in Action" className="relative rounded-2xl shadow-2xl border border-slate-100" />
                         </div>
                         <div className="space-y-8">
                             <div className="inline-block px-4 py-1.5 bg-primary/10 text-primary rounded-full text-sm font-bold uppercase tracking-wider">Who We Are</div>
                             <h2 className="text-3xl md:text-5xl font-bold text-slate-900 leading-tight">Breaking Barriers, <br /><span className="text-primary">Building Futures</span></h2>
-                            <p className="text-xl text-slate-600 leading-relaxed font-light">International Youth Development & Empowerment Foundation (IYDEF) is a global non-profit organization leveraging technology and community connection to address modern challenges. We empower youths through targeted education, professional training, and high-impact networking opportunities.</p>
+                            <p className="text-xl text-slate-600 leading-relaxed font-light">World Youth Centre (WYC) is a global non-profit organization leveraging technology and community connection to address modern challenges. We empower youths through targeted education, professional training, and high-impact networking opportunities.</p>
                         </div>
                     </div>
                 </div>

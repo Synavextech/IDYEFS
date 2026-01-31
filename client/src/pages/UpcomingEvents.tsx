@@ -10,7 +10,7 @@ import { supabase } from "@/lib/supabase";
 import HeroSection from "@/components/HeroSection";
 import Testimonials from "@/components/Testimonials";
 import JoinUs from "@/components/JoinUs";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { useLocation } from "wouter";
 import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
 import { loadStripe } from "@stripe/stripe-js";
@@ -762,6 +762,9 @@ export default function UpcomingEvents() {
                 <DialogContent className="sm:max-w-lg rounded-3xl">
                     <DialogHeader>
                         <DialogTitle className="text-2xl font-bold">Confirm Your Booking</DialogTitle>
+                        <DialogDescription>
+                            Review the details below and select your preferred registration tier.
+                        </DialogDescription>
                     </DialogHeader>
                     {bookingEvent && (
                         <div className="space-y-6 pt-4">
@@ -850,7 +853,9 @@ export default function UpcomingEvents() {
                 <DialogContent>
                     <DialogHeader>
                         <DialogTitle>Submit Event Proposal</DialogTitle>
-                        <CardDescription>To attend this event, please submit a proposal of your project idea.</CardDescription>
+                        <DialogDescription>
+                            To attend this event, please submit a proposal of your project idea.
+                        </DialogDescription>
                     </DialogHeader>
                     <div className="space-y-4">
                         <div className="space-y-2">
@@ -889,6 +894,9 @@ export default function UpcomingEvents() {
                 <DialogContent className="sm:max-w-md rounded-3xl">
                     <DialogHeader>
                         <DialogTitle className="text-2xl font-bold text-center">Visa Invitation Request</DialogTitle>
+                        <DialogDescription className="text-center">
+                            Request an official invitation letter for your visa application.
+                        </DialogDescription>
                     </DialogHeader>
                     {visaInvitationEvent && (
                         <div className="space-y-6 pt-4">
@@ -925,6 +933,9 @@ export default function UpcomingEvents() {
                 <DialogContent className="sm:max-w-md rounded-3xl">
                     <DialogHeader>
                         <DialogTitle className="text-2xl font-bold text-center">Secure Payment</DialogTitle>
+                        <DialogDescription className="text-center">
+                            Choose a secure payment method to complete your transaction.
+                        </DialogDescription>
                     </DialogHeader>
                     {paymentModal && (
                         <div className="space-y-6 pt-2">

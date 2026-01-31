@@ -747,8 +747,7 @@ export default function AdminDashboard() {
 
             {activeTab === 'proposals' && <ProposalManager />}
             {activeTab === 'applications' && <ApplicationManager />}
-            {activeTab === 'visa' && <VisaInvitationManager />}
-            {activeTab === 'blogs' && <BlogManager />}
+
 
             {activeTab === 'events' && (
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">

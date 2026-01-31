@@ -8,7 +8,7 @@ import { Loader2, Calendar, MapPin, Download, FileText, Clock, CheckCircle, XCir
 import { format, isBefore } from "date-fns";
 import HeroSection from "@/components/HeroSection";
 import { generateTicketPDF } from "@/lib/ticket-generator";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
 import PaymentSelection from "@/components/payments/PaymentSelection";
 import { useToast } from "@/hooks/use-toast";
@@ -326,6 +326,9 @@ export default function MyRequests() {
                 <DialogContent className="sm:max-w-md rounded-3xl">
                     <DialogHeader>
                         <DialogTitle className="text-2xl font-bold text-center">Complete Selection</DialogTitle>
+                        <DialogDescription className="text-center">
+                            Choose a secure payment method to complete your transaction.
+                        </DialogDescription>
                     </DialogHeader>
                     {paymentModal && (
                         <div className="space-y-6 pt-2">

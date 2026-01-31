@@ -6,7 +6,7 @@ export default function Testimonials() {
         {
             name: "Sarah Johnson",
             role: "Youth Leader",
-            content: "IYDEF changed my perspective on leadership. The mentorship I received was invaluable for my career growth.",
+            content: "WYC changed my perspective on leadership. The mentorship I received was invaluable for my career growth.",
             gif: "/images/Sarah_Johnson.jpg"
         },
         {

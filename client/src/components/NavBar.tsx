@@ -55,9 +55,9 @@ export default function NavBar() {
             <div className="container mx-auto flex h-16 items-center justify-between px-4">
                 <Link href="/" className="flex items-center gap-2 group">
                     <div className="w-10 h-10 bg-primary rounded-xl flex items-center justify-center text-primary-foreground group-hover:rotate-12 transition-transform duration-300 shadow-lg shadow-primary/20">
-                        <span className="text-xl font-bold">I</span>
+                        <span className="text-xl font-bold">W</span>
                     </div>
-                    <span className="text-2xl font-bold tracking-tighter hidden sm:block">IYDEF</span>
+                    <span className="text-2xl font-bold tracking-tighter hidden sm:block">WYC</span>
                 </Link>
 
                 {/* Desktop Nav - Text Based */}
