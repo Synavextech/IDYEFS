@@ -145,7 +145,7 @@ export default function NavBar() {
                     ) : (
                         <Link href="/auth">
                             <Button size="sm" className="rounded-full px-6 shadow-lg shadow-primary/30 hover:shadow-primary/50 transition-all duration-300 active:scale-95">
-                                Join Us
+                                Login/Register
                             </Button>
                         </Link>
                     )}

@@ -5,6 +5,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { createClient } from '@supabase/supabase-js';
 import Stripe from 'stripe';
+import cookieParser from 'cookie-parser';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -24,10 +25,54 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 app.use(cors());
 app.use(express.json());
+app.use(cookieParser());
 
 // API Routes
 app.get('/api/health', (req, res) => {
     res.json({ status: 'ok' });
+});
+
+// Auth Persistence Endpoints
+app.post('/api/auth/set-session', (req, res) => {
+    const { access_token, refresh_token } = req.body;
+
+    if (!access_token || !refresh_token) {
+        return res.status(400).json({ error: 'Missing tokens' });
+    }
+
+    const cookieOptions = {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        path: '/', // Ensure cookie is available for all routes
+        maxAge: 60 * 60 * 24 * 7 * 1000 // 1 week
+    };
+
+    console.log(`[Server] Setting auth cookies for session (Production: ${process.env.NODE_ENV === 'production'})`);
+    res.cookie('sb-access-token', access_token, cookieOptions);
+    res.cookie('sb-refresh-token', refresh_token, cookieOptions);
+
+    res.json({ status: 'Session set in cookies' });
+});
+
+app.get('/api/auth/get-session', (req, res) => {
+    const accessToken = req.cookies['sb-access-token'];
+    const refreshToken = req.cookies['sb-refresh-token'];
+
+    if (!accessToken || !refreshToken) {
+        console.log('[Server] No auth cookies found');
+        return res.status(401).json({ error: 'No session found' });
+    }
+
+    console.log('[Server] Auth cookies retrieved successfully');
+    res.json({ access_token: accessToken, refresh_token: refreshToken });
+});
+
+app.post('/api/auth/clear-session', (req, res) => {
+    console.log('[Server] Clearing auth cookies');
+    res.clearCookie('sb-access-token', { path: '/' });
+    res.clearCookie('sb-refresh-token', { path: '/' });
+    res.json({ status: 'Session cleared' });
 });
 
 // Stripe Checkout Session

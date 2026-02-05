@@ -20,6 +20,24 @@ export default function Testimonials() {
             role: "Student",
             content: "A fantastic platform for meeting like-minded individuals and learning about financial vigilance.",
             gif: "/images/Elena Rodriguez.webp"
+        },
+        {
+            name: "Marco Rossi",
+            role: "Staff Mentor",
+            content: "I've enjoyed working cooperatively with my team. The synergy and shared vision at WYC make every project impactful.",
+            gif: "/images/staff - mentor.png"
+        },
+        {
+            name: "Saif Al-Mansoori",
+            role: "Delegation Lead",
+            content: "The mission in Ottawa, Canada was incredibly impactful. Our team felt supported and empowered throughout the forum.",
+            gif: "/images/event9.jpeg"
+        },
+        {
+            name: "James Wilson",
+            role: "Global Partner",
+            content: "We highly approve of how our funds were utilized for transparency and youth empowerment. WYC demonstrates true accountability.",
+            gif: "/images/partner.jpeg"
         }
     ];
 

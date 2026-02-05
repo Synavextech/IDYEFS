@@ -68,8 +68,8 @@ const focusAreas = [
     },
     {
         title: "Business grants",
-        image: "/images/t3.gif",
-        content: "We equip young entrepreneurs and startups with the neccessary skills and knowledge to get grants to start and grow their businesses."
+        image: "/images/t9.gif",
+        content: "We equip young entrepreneurs and startups with the neccessary skills and knowledge to get Businesses Grants to start and grow their Businesses."
     }
 ];
 

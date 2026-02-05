@@ -3,7 +3,8 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter }
 import { Button } from "@/components/ui/button";
 import { Loader2, Calendar, MapPin, Ticket, ChevronDown, Users, Bell, Info, Globe, HelpCircle, ArrowRight, MessageCircle, CheckCircle, Download } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import { format, isAfter, isToday } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/lib/supabase";
@@ -43,6 +44,7 @@ export default function UpcomingEvents() {
     const [proposalFile, setProposalFile] = useState<File | null>(null);
     const [existingProposal, setExistingProposal] = useState<any>(null);
     const [submittingProposal, setSubmittingProposal] = useState(false);
+    const [currentImageIdx, setCurrentImageIdx] = useState(0);
 
     // Countdown state
     const [timeLeft, setTimeLeft] = useState<{ days: number; hours: number; minutes: number; seconds: number } | null>(null);
@@ -241,6 +243,17 @@ export default function UpcomingEvents() {
         return () => clearInterval(timer);
     }, [selectedEvent]);
 
+    // Media Gallery Shuffle Effect
+    useEffect(() => {
+        if (!selectedEvent?.imageUrls?.length) return;
+
+        const interval = setInterval(() => {
+            setCurrentImageIdx(prev => (prev + 1) % selectedEvent.imageUrls.length);
+        }, 5000);
+
+        return () => clearInterval(interval);
+    }, [selectedEvent?.imageUrls?.length]);
+
     const bookingMutation = useMutation({
         mutationFn: async ({ eventId, category, amount }: { eventId: string, category: string, amount: number }) => {
             if (!user) throw new Error("User not authenticated");
@@ -352,7 +365,7 @@ export default function UpcomingEvents() {
                         <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-slate-900/40 to-transparent" />
 
                         <div className="container mx-auto px-4 relative z-10 text-white">
-                            <div className="max-w-4xl">
+                            <div className="w-full">
                                 {selectedEvent.theme && (
                                     <span className="inline-block px-4 py-1.5 rounded-full bg-primary/20 backdrop-blur-md border border-primary/30 text-primary font-bold mb-6">
                                         {selectedEvent.theme}
@@ -361,7 +374,7 @@ export default function UpcomingEvents() {
                                 <h1 className="text-5xl md:text-7xl font-bold mb-8 leading-tight tracking-tighter">
                                     {selectedEvent.title}
                                 </h1>
-                                <p className="text-xl md:text-2xl text-slate-300 mb-10 leading-relaxed max-w-2xl">
+                                <p className="text-xl md:text-2xl text-slate-300 mb-10 leading-relaxed w-full">
                                     {selectedEvent.description}
                                 </p>
                                 <div className="flex flex-wrap gap-6 text-lg mb-10">
@@ -671,6 +684,44 @@ export default function UpcomingEvents() {
                                             <p className="text-slate-600 dark:text-slate-400 text-sm leading-relaxed">{faq.answer}</p>
                                         </div>
                                     ))}
+                                </div>
+                            </div>
+                        </section>
+                    )}
+
+                    {/* 10. Media Gallery Shuffle */}
+                    {selectedEvent.imageUrls?.length > 0 && (
+                        <section className="py-24 overflow-hidden bg-slate-50 dark:bg-slate-900/40">
+                            <div className="container mx-auto px-4">
+                                <div className="text-center mb-16">
+                                    <h2 className="text-4xl md:text-5xl font-bold mb-4 tracking-tight">Event Gallery</h2>
+                                    <p className="text-slate-500 text-lg">A window into our vibrant global community and transformative gatherings.</p>
+                                </div>
+                                <div className="max-w-7xl mx-auto aspect-[16/7] relative rounded-[2.5rem] overflow-hidden shadow-[0_32px_64px_-16px_rgba(0,0,0,0.3)] bg-slate-950 group">
+                                    <AnimatePresence mode="wait">
+                                        <motion.img
+                                            key={currentImageIdx}
+                                            src={selectedEvent.imageUrls[currentImageIdx]}
+                                            initial={{ opacity: 0, scale: 1.1, filter: "blur(10px)" }}
+                                            animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
+                                            exit={{ opacity: 0, scale: 0.95, filter: "blur(10px)" }}
+                                            transition={{ duration: 1.2, ease: [0.22, 1, 0.36, 1] }}
+                                            className="absolute inset-0 w-full h-full object-cover"
+                                        />
+                                    </AnimatePresence>
+
+                                    {/* Overlay for depth */}
+                                    <div className="absolute inset-0 bg-gradient-to-t from-slate-950/40 via-transparent to-transparent pointer-events-none" />
+
+                                    {/* Progress indicator */}
+                                    <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex gap-2 z-10">
+                                        {selectedEvent.imageUrls.map((_: any, idx: number) => (
+                                            <div
+                                                key={idx}
+                                                className={`h-1.5 rounded-full transition-all duration-700 ${currentImageIdx === idx ? 'w-10 bg-white' : 'w-2 bg-white/40'}`}
+                                            />
+                                        ))}
+                                    </div>
                                 </div>
                             </div>
                         </section>
