@@ -113,10 +113,10 @@ export function ApplicationForm({ open, onOpenChange, type, title, onSuccess }: 
 
                 <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
                     <div className="space-y-2">
-                        <Label htmlFor="description">About You / Proposal</Label>
+                        <Label htmlFor="description">Tell us more about yourself, Topics of interest & contact details (email,phone) for further consultation</Label>
                         <Textarea
                             id="description"
-                            placeholder="Tell us why you want to join..."
+                            placeholder="Tell us how you would like to contribute to the community & how we can contact you"
                             className="min-h-[100px]"
                             {...register("description", { required: "Description is required", minLength: { value: 50, message: "Minimum 50 characters" } })}
                         />
@@ -124,7 +124,7 @@ export function ApplicationForm({ open, onOpenChange, type, title, onSuccess }: 
                     </div>
 
                     <div className="space-y-2">
-                        <Label>Supporting Document (Optional)</Label>
+                        <Label>Attach additional documents (Optional)</Label>
                         <div className="flex items-center gap-4">
                             <Input
                                 type="file"
@@ -137,7 +137,7 @@ export function ApplicationForm({ open, onOpenChange, type, title, onSuccess }: 
                                 className="flex items-center gap-2 px-4 py-2 border rounded-md cursor-pointer hover:bg-slate-50 w-full justify-center"
                             >
                                 <Upload className="h-4 w-4" />
-                                {file ? file.name : "Upload Proposal/Resume"}
+                                {file ? file.name : "Upload/attach document"}
                             </Label>
                         </div>
                     </div>
@@ -154,7 +154,7 @@ export function ApplicationForm({ open, onOpenChange, type, title, onSuccess }: 
                                 min: { value: 100, message: "Minimum donation is $100" }
                             })}
                         />
-                        <p className="text-xs text-slate-500">Minimum mandatory donation is $100</p>
+                        <p className="text-xs text-slate-500">Minimum mandatory fee is $100</p>
                         {errors.donationAmount && <p className="text-sm text-red-500">{errors.donationAmount.message as string}</p>}
                     </div>
 

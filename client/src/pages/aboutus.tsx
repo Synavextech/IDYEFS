@@ -67,7 +67,7 @@ const focusAreas = [
         content: "Equipping young minds with the tools for financial vigilance and economic independence."
     },
     {
-        title: "Business grants",
+        title: "Business Grants",
         image: "/images/t9.gif",
         content: "We equip young entrepreneurs and startups with the neccessary skills and knowledge to get Businesses Grants to start and grow their Businesses."
     }

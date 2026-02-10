@@ -450,7 +450,7 @@ export default function UpcomingEvents() {
                                             { title: "Become a Speaker", icon: MessageCircle, color: "bg-blue-500", desc: "Share your expertise with a global audience.", type: 'SPEAKER' },
                                             { title: "Join as Sponsor", icon: Globe, color: "bg-purple-500", desc: "Support the next generation of leaders.", type: 'SPONSOR' },
                                             { title: "NextGenLeaders", icon: Users, color: "bg-amber-500", desc: "Our premium leadership incubator program.", type: 'NEXTGEN' },
-                                            { title: "#GlobalYouthForum", icon: Globe, color: "bg-emerald-500", desc: "Become a regional champion for change.", type: 'GLOBAL_FORUM' }
+                                            { title: "#World Youth Centre", icon: Globe, color: "bg-emerald-500", desc: "Become a regional champion for change.", type: 'GLOBAL_FORUM' }
                                         ].map((item, i) => (
                                             <div key={i} className="p-6 rounded-2xl border border-slate-100 dark:border-slate-800 hover:shadow-lg transition-all">
                                                 <div className={`${item.color} w-10 h-10 rounded-xl flex items-center justify-center text-white mb-4`}>
@@ -490,11 +490,22 @@ export default function UpcomingEvents() {
                                 </div>
                                 <Button
                                     size="lg"
-                                    className="rounded-2xl h-14 px-8 text-lg font-bold"
+                                    className="rounded-2xl h-auto py-4 px-8 text-lg font-bold flex flex-col items-center gap-1"
                                     onClick={() => setVisaInvitationEvent(selectedEvent)}
                                     disabled={!timeLeft}
                                 >
-                                    {timeLeft ? "Request Visa Letter ($50.00)" : "Registration Closed"}
+                                    {timeLeft ? (
+                                        <>
+                                            <span className="flex items-center gap-2">
+                                                Request Visa Letter
+                                                <span className="bg-emerald-500 text-white text-xs px-2 py-0.5 rounded-full animate-pulse">PROMO</span>
+                                            </span>
+                                            <span className="text-sm font-normal opacity-90">
+                                                <span className="line-through opacity-75 mr-2 text-slate-300">$130.00</span>
+                                                <span className="font-bold text-xl">$65.00</span>
+                                            </span>
+                                        </>
+                                    ) : "Registration Closed"}
                                 </Button>
                             </div>
                         </div>
@@ -541,35 +552,36 @@ export default function UpcomingEvents() {
                                         <Button
                                             key={opt.category}
                                             size="lg"
-                                            className="bg-white text-primary hover:bg-slate-50 h-auto min-h-[140px] py-6 flex flex-col items-center justify-center rounded-3xl group relative overflow-hidden"
+                                            className="bg-white text-primary hover:bg-slate-50 h-auto min-h-[300px] py-8 flex flex-col items-center justify-start rounded-3xl group relative overflow-hidden shadow-lg border-2 border-transparent hover:border-primary/20 transition-all"
                                             onClick={() => {
                                                 setBookingCategory(opt.category as any);
                                                 setBookingEvent(selectedEvent);
                                             }}
                                             disabled={!timeLeft}
                                         >
-                                            <span className="text-xl font-bold">{opt.label}</span>
-                                            <span className="text-sm font-medium opacity-70 mb-2">{timeLeft ? opt.desc : "Registration Closed"}</span>
-                                            <div className="flex flex-col items-center gap-1 my-2">
+                                            <span className="text-2xl font-black mb-1">${opt.price.toFixed(2)}</span>
+                                            <span className="text-xl font-bold mb-2">{opt.label}</span>
+                                            <div className="w-12 h-1 bg-primary/20 rounded-full mb-4" />
+                                            <span className="text-sm font-medium opacity-70 mb-6">{timeLeft ? opt.desc : "Registration Closed"}</span>
+
+                                            <div className="w-full border-t border-slate-100 my-2" />
+
+                                            <ul className="text-left w-full space-y-3 px-2 flex-grow">
                                                 {selectedEvent.benefits?.filter((b: any) => b.category === opt.category).map((b: any, i: number) => (
-                                                    <span key={i} className="text-xs text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full flex items-center gap-1">
-                                                        <CheckCircle className="h-3 w-3 text-emerald-500" /> {b.description}
-                                                    </span>
+                                                    <li key={i} className="text-sm text-slate-600 flex items-start gap-2 leading-tight">
+                                                        <CheckCircle className="h-4 w-4 text-emerald-500 flex-shrink-0 mt-0.5" />
+                                                        <span>{b.description}</span>
+                                                    </li>
                                                 ))}
-                                            </div>
-                                            <span className="text-2xl font-black mt-2">${opt.price.toFixed(2)}</span>
-                                            <Ticket className="absolute bottom-2 right-2 h-4 w-4 opacity-10 rotate-12 group-hover:scale-150 transition-transform" />
+                                                {(!selectedEvent.benefits || selectedEvent.benefits.filter((b: any) => b.category === opt.category).length === 0) && (
+                                                    <li className="text-sm text-slate-400 italic text-center py-4">Standard benefits apply</li>
+                                                )}
+                                            </ul>
+
+                                            <Ticket className="absolute bottom-4 right-4 h-24 w-24 text-primary/5 -rotate-12 group-hover:scale-110 transition-transform pointer-events-none" />
                                         </Button>
                                     ))}
                                 </div>
-                                <div className="flex flex-wrap justify-center gap-4">
-                                    <Button variant="outline" className="border-white text-white hover:bg-white/10 h-12 rounded-xl">Become a Sponsor & Donate</Button>
-                                    <Button variant="outline" className="border-white text-white hover:bg-white/10 h-12 rounded-xl">Join as Speaker</Button>
-                                </div>
-                            </div>
-                            <div className="mt-8 flex justify-center gap-8 text-white/80 font-medium">
-                                <span>#GlobalYouthForum</span>
-                                <span>#NextGenLeaders</span>
                             </div>
                         </div>
                     </section>
@@ -960,7 +972,7 @@ export default function UpcomingEvents() {
                             </div>
                             <div className="flex justify-between items-center p-4 border rounded-2xl">
                                 <span className="font-bold">Processing Fee</span>
-                                <span className="text-xl font-bold text-primary">$50.00</span>
+                                <span className="text-xl font-bold text-primary">Was $ 130 but now $65.00</span>
                             </div>
                             <div className="flex gap-4">
                                 <Button variant="outline" className="flex-1 h-12 rounded-xl" onClick={() => setVisaInvitationEvent(null)}>Cancel</Button>
@@ -969,7 +981,7 @@ export default function UpcomingEvents() {
                                         setLocation(`/auth?redirectTo=${encodeURIComponent(window.location.pathname + window.location.search)}`);
                                         return;
                                     }
-                                    visaMutation.mutate({ eventId: visaInvitationEvent.id, amount: 50 });
+                                    visaMutation.mutate({ eventId: visaInvitationEvent.id, amount: 65 });
                                 }} disabled={visaMutation.isPending}>
                                     {visaMutation.isPending ? "Processing..." : "Confirm & Pay"}
                                 </Button>
@@ -981,7 +993,7 @@ export default function UpcomingEvents() {
 
             {/* Final Payment Dialog */}
             <Dialog open={!!paymentModal?.open} onOpenChange={() => !isPaymentProcessing && setPaymentModal(null)}>
-                <DialogContent className="sm:max-w-md rounded-3xl">
+                <DialogContent className="sm:max-w-md rounded-3xl max-h-[90vh] overflow-y-auto">
                     <DialogHeader>
                         <DialogTitle className="text-2xl font-bold text-center">Secure Payment</DialogTitle>
                         <DialogDescription className="text-center">

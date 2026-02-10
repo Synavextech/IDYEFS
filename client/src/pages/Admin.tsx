@@ -519,6 +519,9 @@ export default function AdminDashboard() {
             if (selfFundedInput) selfFundedInput.value = event.self_funded_seats?.toString() || "0";
             if (partiallyFundedInput) partiallyFundedInput.value = event.partially_funded_seats?.toString() || "0";
             if (fullyFundedInput) fullyFundedInput.value = event.fully_funded_seats?.toString() || "0";
+
+            const requiresProposalInput = form.querySelector('#requires_proposal') as HTMLInputElement;
+            if (requiresProposalInput) requiresProposalInput.checked = !!event.requires_proposal;
         }
 
         window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -554,6 +557,7 @@ export default function AdminDashboard() {
         const selfFundedSeats = formData.get('self_funded_seats') as string;
         const partiallyFundedSeats = formData.get('partially_funded_seats') as string;
         const fullyFundedSeats = formData.get('fully_funded_seats') as string;
+        const requiresProposal = formData.get('requires_proposal') === 'on';
 
         try {
             console.log("[Submit] Validating form data...");
@@ -616,7 +620,8 @@ export default function AdminDashboard() {
                         journey,
                         self_funded_seats: parseInt(selfFundedSeats) || 0,
                         partially_funded_seats: parseInt(partiallyFundedSeats) || 0,
-                        fully_funded_seats: parseInt(fullyFundedSeats) || 0
+                        fully_funded_seats: parseInt(fullyFundedSeats) || 0,
+                        requires_proposal: requiresProposal
                     })
                     .eq('id', editingEvent.id);
 
@@ -646,7 +651,8 @@ export default function AdminDashboard() {
                         journey,
                         self_funded_seats: parseInt(selfFundedSeats) || 0,
                         partially_funded_seats: parseInt(partiallyFundedSeats) || 0,
-                        fully_funded_seats: parseInt(fullyFundedSeats) || 0
+                        fully_funded_seats: parseInt(fullyFundedSeats) || 0,
+                        requires_proposal: requiresProposal
                     });
 
                 if (error) {
@@ -778,6 +784,16 @@ export default function AdminDashboard() {
                                         <Label htmlFor="price">Price ($)</Label>
                                         <Input id="price" name="price" type="number" step="0.01" placeholder="0.00" />
                                     </div>
+                                </div>
+
+                                <div className="flex items-center space-x-2 py-2">
+                                    <input
+                                        type="checkbox"
+                                        id="requires_proposal"
+                                        name="requires_proposal"
+                                        className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary accent-primary"
+                                    />
+                                    <Label htmlFor="requires_proposal" className="cursor-pointer">Requires Proposal Submission</Label>
                                 </div>
                                 <div className="grid grid-cols-3 gap-4">
                                     <div className="space-y-2">
