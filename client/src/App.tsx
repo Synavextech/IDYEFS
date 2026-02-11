@@ -8,6 +8,7 @@ import { ProtectedRoute } from "./lib/protected-route";
 
 import NavBar from "@/components/NavBar";
 import Footer from "@/components/Footer";
+import FirstVisitNotification from "@/components/FirstVisitNotification";
 
 import Landing from "@/pages/landing";
 import AboutUs from "@/pages/aboutus";
@@ -17,6 +18,9 @@ import Blog from "@/pages/Blog";
 import AuthPage from "@/pages/Auth";
 import Admin from "@/pages/Admin";
 import MyRequests from "@/pages/MyRequests";
+import CompliancePolicy from "@/pages/CompliancePolicy";
+import PrivacyPolicy from "@/pages/PrivacyPolicy";
+import TermsAndConditions from "@/pages/TermsAndConditions";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -36,6 +40,10 @@ function Router() {
                     <ProtectedRoute path="/admin" component={Admin} requireAdmin={true} />
                     <ProtectedRoute path="/my-requests" component={MyRequests} />
 
+                    <Route path="/compliance" component={CompliancePolicy} />
+                    <Route path="/privacy" component={PrivacyPolicy} />
+                    <Route path="/terms" component={TermsAndConditions} />
+
                     <Route component={NotFound} />
                 </Switch>
             </main>
@@ -51,6 +59,7 @@ function App() {
                 <ThemeProvider>
                     <Router />
                     <Toaster />
+                    <FirstVisitNotification />
                 </ThemeProvider>
             </AuthProvider>
         </QueryClientProvider>

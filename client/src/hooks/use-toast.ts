@@ -1,21 +1,66 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 
 export interface Toast {
     id: string;
     title?: string;
     description?: string;
     variant?: "default" | "destructive";
+    action?: React.ReactNode;
 }
 
-export function useToast() {
-    const [toasts, setToasts] = useState<Toast[]>([]);
+const TOAST_LIMIT = 5;
 
-    const toast = useCallback(({ title, description, variant = "default" }: Omit<Toast, "id">) => {
-        const id = Math.random().toString(36).substring(2, 9);
-        console.log(`[Toast] ${title}: ${description} (${variant})`);
-        // In a real app, you'd add this to state and have a Toaster component render it
+let toastCount = 0;
+function genId() {
+    toastCount = (toastCount + 1) % Number.MAX_VALUE;
+    return toastCount.toString();
+}
+
+type Listener = (toasts: Toast[]) => void;
+let memoryToasts: Toast[] = [];
+const listeners = new Set<Listener>();
+
+const dispatch = (toasts: Toast[]) => {
+    memoryToasts = toasts;
+    listeners.forEach((listener) => {
+        listener(memoryToasts);
+    });
+};
+
+export function useToast() {
+    const [toasts, setToasts] = useState<Toast[]>(memoryToasts);
+
+    useEffect(() => {
+        listeners.add(setToasts);
+        return () => {
+            listeners.delete(setToasts);
+        };
+    }, []);
+
+    const toast = useCallback(({ title, description, variant = "default", action }: Omit<Toast, "id">) => {
+        const id = genId();
+
+        const newToasts = [
+            { id, title, description, variant, action },
+            ...memoryToasts
+        ].slice(0, TOAST_LIMIT);
+
+        dispatch(newToasts);
+
         return id;
     }, []);
 
-    return { toast, toasts };
+    const dismiss = useCallback((toastId?: string) => {
+        if (toastId) {
+            dispatch(memoryToasts.filter((t) => t.id !== toastId));
+        } else {
+            dispatch([]);
+        }
+    }, []);
+
+    return {
+        toast,
+        dismiss,
+        toasts,
+    };
 }

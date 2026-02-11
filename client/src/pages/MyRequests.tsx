@@ -4,7 +4,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { supabase } from "@/lib/supabase";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, Calendar, MapPin, Download, FileText, Clock, CheckCircle, XCircle, Globe, Ticket } from "lucide-react";
+import { Loader2, Calendar, MapPin, Download, FileText, Clock, CheckCircle, XCircle, Globe, Ticket, Users } from "lucide-react";
 import { format, isBefore } from "date-fns";
 import HeroSection from "@/components/HeroSection";
 import { generateTicketPDF } from "@/lib/ticket-generator";
@@ -33,13 +33,135 @@ interface VisaRequest {
     event: any;
 }
 
+interface Application {
+    id: string;
+    type: 'SPEAKER' | 'SPONSOR' | 'NEXTGEN' | 'GLOBAL_FORUM';
+    status: string;
+    description: string;
+    documentUrl?: string;
+    donationAmount: number;
+    paymentStatus: string;
+    createdAt: string;
+}
+
+function ProposalsList({ userId, onResume }: { userId: string | undefined; onResume: (event: any) => void }) {
+    const [proposals, setProposals] = useState<any[]>([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        if (userId) {
+            const fetchProposals = async () => {
+                const { data, error } = await supabase
+                    .from('Proposals')
+                    .select('*, event:Event(*)')
+                    .eq('userId', userId)
+                    .order('createdAt', { ascending: false });
+                if (!error) setProposals(data || []);
+                setLoading(false);
+            };
+            fetchProposals();
+        }
+    }, [userId]);
+
+    if (loading) return <div className="flex justify-center p-4"><Loader2 className="animate-spin h-6 w-6 text-primary" /></div>;
+    if (proposals.length === 0) return <p className="text-slate-500 text-center py-4">No proposals found.</p>;
+
+    return (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {proposals.map((p) => (
+                <Card key={p.id} className="overflow-hidden border-none shadow-lg">
+                    <CardHeader className="p-6">
+                        <CardTitle className="text-xl font-bold line-clamp-1">{p.event?.title}</CardTitle>
+                        <div className={cn(
+                            "inline-flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider mt-2",
+                            p.status === 'APPROVED' ? "bg-green-500 text-white" :
+                                p.status === 'REJECTED' ? "bg-red-500 text-white" : "bg-amber-500 text-white"
+                        )}>
+                            {p.status}
+                        </div>
+                    </CardHeader>
+                    <CardContent className="p-6 pt-0">
+                        <p className="text-sm text-slate-500 line-clamp-2 mb-4">{p.description}</p>
+                        {p.status === 'APPROVED' && (
+                            <Button size="sm" onClick={() => onResume(p.event)} className="w-full gap-2">
+                                <Ticket className="h-4 w-4" /> Resume Booking
+                            </Button>
+                        )}
+                    </CardContent>
+                </Card>
+            ))}
+        </div>
+    );
+}
+
+function ApplicationsList({ userId, onResume }: { userId: string | undefined; onResume: (app: Application) => void }) {
+    const [applications, setApplications] = useState<Application[]>([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        if (userId) {
+            const fetchApplications = async () => {
+                const { data, error } = await supabase
+                    .from('Applications')
+                    .select('*')
+                    .eq('userId', userId)
+                    .order('createdAt', { ascending: false });
+                if (!error) setApplications(data || []);
+                setLoading(false);
+            };
+            fetchApplications();
+        }
+    }, [userId]);
+
+    if (loading) return <div className="flex justify-center p-4"><Loader2 className="animate-spin h-6 w-6 text-primary" /></div>;
+    if (applications.length === 0) return <p className="text-slate-500 text-center py-4">No other applications found.</p>;
+
+    return (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {applications.map((app) => (
+                <Card key={app.id} className="overflow-hidden border-none shadow-lg">
+                    <CardHeader className="p-6">
+                        <CardTitle className="text-xl font-bold">{app.type.replace('_', ' ')}</CardTitle>
+                        <div className={cn(
+                            "inline-flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider mt-2",
+                            app.paymentStatus === 'PAID' ? "bg-green-500 text-white" : "bg-amber-500 text-white"
+                        )}>
+                            {app.paymentStatus === 'PAID' ? 'PAID' : 'PAYMENT PENDING'}
+                        </div>
+                    </CardHeader>
+                    <CardContent className="p-6 pt-0">
+                        <p className="text-sm text-slate-500 line-clamp-2 mb-4">{app.description}</p>
+                        <div className="flex flex-col gap-2">
+                            <div className="flex justify-between items-center text-sm mb-2">
+                                <span className="text-slate-400">Status:</span>
+                                <span className={cn(
+                                    "font-bold",
+                                    app.status === 'APPROVED' ? "text-green-600" :
+                                        app.status === 'REJECTED' ? "text-red-600" : "text-amber-600"
+                                )}>{app.status}</span>
+                            </div>
+                            {app.paymentStatus !== 'PAID' && (
+                                <Button size="sm" onClick={() => onResume(app)} className="w-full gap-2 border-amber-500 text-amber-600 hover:bg-amber-50" variant="outline">
+                                    <Ticket className="h-4 w-4" /> Finalize & Pay ${app.donationAmount}
+                                </Button>
+                            )}
+                        </div>
+                    </CardContent>
+                </Card>
+            ))}
+        </div>
+    );
+}
+
+
 export default function MyRequests() {
     const { user, profile } = useAuth();
     const { toast } = useToast();
     const [bookings, setBookings] = useState<Booking[]>([]);
     const [visaRequests, setVisaRequests] = useState<VisaRequest[]>([]);
+    const [applications, setApplications] = useState<Application[]>([]);
     const [loading, setLoading] = useState(true);
-    const [paymentModal, setPaymentModal] = useState<{ open: boolean; amount: number; bookingId: string; type: 'event' | 'visa' } | null>(null);
+    const [paymentModal, setPaymentModal] = useState<{ open: boolean; amount: number; bookingId: string; type: 'event' | 'visa' | 'application' } | null>(null);
     const [isPaymentProcessing, setIsPaymentProcessing] = useState(false);
     const [location, setLocation] = useLocation();
 
@@ -70,6 +192,16 @@ export default function MyRequests() {
 
             if (vError) throw vError;
             setVisaRequests(vData || []);
+
+            // Fetch Applications
+            const { data: aData, error: aError } = await supabase
+                .from('Applications')
+                .select('*')
+                .eq('userId', user?.id)
+                .order('createdAt', { ascending: false });
+
+            if (aError) throw aError;
+            setApplications(aData || []);
 
         } catch (error) {
             console.error("Error fetching requests:", error);
@@ -117,6 +249,16 @@ export default function MyRequests() {
                 toast({ title: "Visa Request Paid!", description: "Your request is now being processed." });
                 // Refresh data
                 fetchData();
+            } else if (type === 'application') {
+                const { error: appError } = await supabase
+                    .from('Applications')
+                    .update({ status: 'APPROVED', paymentStatus: 'PAID' })
+                    .eq('id', bookingId);
+
+                if (appError) throw appError;
+
+                toast({ title: "Application Paid!", description: "Your application is now under review." });
+                fetchData();
             }
         } catch (error: any) {
             console.error("Error finalizing booking:", error);
@@ -131,16 +273,22 @@ export default function MyRequests() {
         if (!paymentModal) return;
         setIsPaymentProcessing(true);
         try {
-            const booking = paymentModal.type === 'event'
-                ? bookings.find(b => b.id === paymentModal.bookingId)
-                : visaRequests.find(v => v.id === paymentModal.bookingId);
+            let booking: any;
+
+            if (paymentModal.type === 'event') {
+                booking = bookings.find(b => b.id === paymentModal.bookingId);
+            } else if (paymentModal.type === 'visa') {
+                booking = visaRequests.find(v => v.id === paymentModal.bookingId);
+            } else if (paymentModal.type === 'application') {
+                booking = applications.find(a => a.id === paymentModal.bookingId);
+            }
 
             const response = await fetch('/api/create-checkout-session', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    eventId: booking?.eventId,
-                    category: (booking as Booking)?.category || 'VISA',
+                    eventId: booking?.eventId || null,
+                    category: (booking as Booking)?.category || (paymentModal.type === 'application' ? (booking as Application)?.type : 'VISA'),
                     amount: paymentModal.amount,
                     userId: user?.id,
                     bookingId: paymentModal.bookingId,
@@ -192,6 +340,18 @@ export default function MyRequests() {
             />
 
             <div className="container mx-auto px-4 py-16 space-y-16">
+                {/* Event Proposals Section */}
+                <section>
+                    <div className="flex items-center gap-3 mb-8">
+                        <FileText className="h-8 w-8 text-primary" />
+                        <h2 className="text-3xl font-bold">My Event Proposals</h2>
+                    </div>
+
+                    <ProposalsList userId={user?.id} onResume={(event: any) => {
+                        setLocation(`/upcoming-events?id=${event.id}&resume=true`);
+                    }} />
+                </section>
+
                 {/* Event Bookings Section */}
                 <section>
                     <div className="flex items-center gap-3 mb-8">
@@ -243,7 +403,7 @@ export default function MyRequests() {
                                             isBefore(new Date(booking.event?.date), new Date()) ? (
                                                 <span className="text-[10px] font-bold text-red-500 uppercase bg-red-50 px-2 py-1 rounded-md">Closed</span>
                                             ) : (
-                                                <Button size="sm" variant="outline" className="gap-2 border-amber-500 text-amber-600 hover:bg-amber-50" onClick={() => setPaymentModal({ open: true, amount: booking.amount, bookingId: booking.id, type: 'event' })}>
+                                                <Button size="sm" variant="outline" className="gap-2 border-amber-500 text-amber-600 hover:bg-amber-50" onClick={() => setLocation(`/upcoming-events?id=${booking.eventId}&resume=true&bookingId=${booking.id}`)}>
                                                     <Ticket className="h-4 w-4" /> Resume
                                                 </Button>
                                             )
@@ -318,6 +478,24 @@ export default function MyRequests() {
                             ))}
                         </div>
                     )}
+                </section>
+
+                {/* Other Applications Section */}
+                <section>
+                    <div className="flex items-center gap-3 mb-8">
+                        <Users className="h-8 w-8 text-primary" />
+                        <h2 className="text-3xl font-bold">Other Applications</h2>
+                    </div>
+
+                    <ApplicationsList
+                        userId={user?.id}
+                        onResume={(app) => setPaymentModal({
+                            open: true,
+                            amount: app.donationAmount,
+                            bookingId: app.id,
+                            type: 'application'
+                        })}
+                    />
                 </section>
             </div>
 

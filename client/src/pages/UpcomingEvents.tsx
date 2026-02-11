@@ -13,6 +13,7 @@ import Testimonials from "@/components/Testimonials";
 import JoinUs from "@/components/JoinUs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { useLocation } from "wouter";
+import { cn } from "@/lib/utils";
 import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
 import { loadStripe } from "@stripe/stripe-js";
 import PaymentSelection from "@/components/payments/PaymentSelection";
@@ -30,10 +31,12 @@ export default function UpcomingEvents() {
     const { toast } = useToast();
     const [location, setLocation] = useLocation();
     const [bookingEvent, setBookingEvent] = useState<any | null>(null);
-    const [bookingCategory, setBookingCategory] = useState<'SELF_FUNDED' | 'PARTIALLY_FUNDED' | 'FULLY_FUNDED'>('SELF_FUNDED');
+    const [bookingCategory, setBookingCategory] = useState<string>('PHYSICAL_SELF_FUNDED');
+    const [bookingMode, setBookingMode] = useState<'PHYSICAL' | 'VIRTUAL'>('PHYSICAL');
     const [visaInvitationEvent, setVisaInvitationEvent] = useState<any | null>(null);
     const [paymentModal, setPaymentModal] = useState<{ open: boolean; amount: number; bookingId: string; type: 'event' | 'visa' | 'application' } | null>(null);
     const [isPaymentProcessing, setIsPaymentProcessing] = useState(false);
+    const [resumingBookingId, setResumingBookingId] = useState<string | null>(null);
 
     // Application Form State
     const [applicationModal, setApplicationModal] = useState<{ open: boolean; type: 'SPEAKER' | 'SPONSOR' | 'NEXTGEN' | 'GLOBAL_FORUM'; title: string } | null>(null);
@@ -96,7 +99,23 @@ export default function UpcomingEvents() {
         } else if (paymentStatus === 'cancelled') {
             toast({ title: "Payment Cancelled", description: "Your booking was not completed.", variant: "destructive" });
         }
-    }, [paymentStatus, bookingIdFromUrl]);
+    }, [paymentStatus, bookingIdFromUrl, urlEventId]);
+
+    // Handle Resume Request
+    useEffect(() => {
+        const resume = urlParams.get('resume');
+        const bookingId = urlParams.get('bookingId');
+
+        if (resume === 'true' && urlEventId && events) {
+            const event = events.find((e: any) => e.id === urlEventId);
+            if (event) {
+                setBookingEvent(event);
+                if (bookingId) {
+                    setResumingBookingId(bookingId);
+                }
+            }
+        }
+    }, [events, urlEventId]);
 
     async function handleSuccessfulPayment(bookingId: string, type: string = 'event') {
         setIsPaymentProcessing(true);
@@ -133,6 +152,15 @@ export default function UpcomingEvents() {
                 if (visaError) throw visaError;
 
                 toast({ title: "Visa Request Paid!", description: "Your request is now being processed." });
+            } else if (type === 'application') {
+                const { error: appError } = await supabase
+                    .from('Applications')
+                    .update({ status: 'APPROVED', paymentStatus: 'PAID' })
+                    .eq('id', bookingId);
+
+                if (appError) throw appError;
+
+                toast({ title: "Application Paid!", description: "Your application is now under review." });
             }
         } catch (error: any) {
             console.error("Error finalizing booking:", error);
@@ -257,19 +285,35 @@ export default function UpcomingEvents() {
     const bookingMutation = useMutation({
         mutationFn: async ({ eventId, category, amount }: { eventId: string, category: string, amount: number }) => {
             if (!user) throw new Error("User not authenticated");
-            const { data, error } = await supabase
-                .from('Booking')
-                .insert({
-                    eventId: eventId,
-                    userId: user.id,
-                    category: category,
-                    amountPaid: amount,
-                    status: 'PENDING'
-                })
-                .select()
-                .single();
-            if (error) throw error;
-            return data;
+
+            if (resumingBookingId) {
+                const { data, error } = await supabase
+                    .from('Booking')
+                    .update({
+                        category: category,
+                        amountPaid: amount,
+                        status: 'PENDING'
+                    })
+                    .eq('id', resumingBookingId)
+                    .select()
+                    .single();
+                if (error) throw error;
+                return data;
+            } else {
+                const { data, error } = await supabase
+                    .from('Booking')
+                    .insert({
+                        eventId: eventId,
+                        userId: user.id,
+                        category: category,
+                        amountPaid: amount,
+                        status: 'PENDING'
+                    })
+                    .select()
+                    .single();
+                if (error) throw error;
+                return data;
+            }
         },
         onSuccess: (data) => {
             setBookingEvent(null);
@@ -420,19 +464,26 @@ export default function UpcomingEvents() {
                                     </h2>
                                     <div className="space-y-6">
                                         {[
-                                            { title: "Self Funded", price: selectedEvent.price, seats: selectedEvent.self_funded_seats, desc: "Standard admission for individual delegates." },
-                                            { title: "Partially Funded", price: selectedEvent.price * 0.75, seats: selectedEvent.partially_funded_seats, desc: "Special rate for students and young professionals (75% of total)." },
-                                            { title: "Fully Funded", price: selectedEvent.price * 0.5, seats: selectedEvent.fully_funded_seats, desc: "Highly competitive scholarship-based admission (50% of total)." }
+                                            { title: "Self Funded", p: selectedEvent.price, seats: selectedEvent.self_funded_seats, desc: "Standard admission for individual delegates." },
+                                            { title: "Partially Funded", p: selectedEvent.price * 0.75, seats: selectedEvent.partially_funded_seats, desc: "Special rate for students (75% of total)." },
+                                            { title: "Fully Funded", p: selectedEvent.price * 0.5, seats: selectedEvent.fully_funded_seats, desc: "Scholarship-based admission (50% of total)." }
                                         ].map((cat, i) => (
                                             <div key={i} className="p-6 rounded-2xl border border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 hover:border-primary/30 transition-all group">
                                                 <div className="flex justify-between items-start mb-4">
                                                     <div>
                                                         <h4 className="font-bold text-xl group-hover:text-primary transition-colors">{cat.title}</h4>
-                                                        <p className="text-slate-500 text-sm">{cat.desc}</p>
+                                                        <p className="text-slate-500 text-sm max-w-[200px]">{cat.desc}</p>
                                                     </div>
-                                                    <div className="text-right">
-                                                        <span className="text-2xl font-bold text-primary">${cat.price.toFixed(2)}</span>
-                                                        <p className="text-xs text-slate-400 mt-1">{cat.seats} seats remaining</p>
+                                                    <div className="text-right space-y-1">
+                                                        <div className="flex items-center justify-end gap-2">
+                                                            <span className="text-xs font-medium text-slate-400">Physical:</span>
+                                                            <span className="text-xl font-bold text-primary">${cat.p.toFixed(2)}</span>
+                                                        </div>
+                                                        <div className="flex items-center justify-end gap-2">
+                                                            <span className="text-xs font-medium text-slate-400">Virtual:</span>
+                                                            <span className="text-lg font-bold text-emerald-600">${(cat.p * 0.65).toFixed(2)}</span>
+                                                        </div>
+                                                        <p className="text-[10px] text-slate-400 mt-1">{cat.seats} seats available</p>
                                                     </div>
                                                 </div>
                                             </div>
@@ -539,48 +590,91 @@ export default function UpcomingEvents() {
                     )}
 
                     {/* 4. Booking CTA */}
-                    <section className="py-20 bg-primary text-white text-center">
+                    <section className="py-24 bg-slate-900 text-white text-center">
                         <div className="container mx-auto px-4">
-                            <h2 className="text-3xl md:text-5xl font-bold mb-8">Ready to Join Us?</h2>
-                            <div className="flex flex-col gap-8 items-center max-w-4xl mx-auto">
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 w-full">
-                                    {[
-                                        { category: 'SELF_FUNDED', label: 'Self Funded', price: selectedEvent.price, desc: 'Register now to secure your place' },
-                                        { category: 'PARTIALLY_FUNDED', label: 'Partially Funded', price: selectedEvent.price * 0.75, desc: 'Secure your 25% discount' },
-                                        { category: 'FULLY_FUNDED', label: 'Fully Funded', price: selectedEvent.price * 0.5, desc: 'Apply for 50% scholarship' }
-                                    ].map((opt) => (
-                                        <Button
-                                            key={opt.category}
-                                            size="lg"
-                                            className="bg-white text-primary hover:bg-slate-50 h-auto min-h-[300px] py-8 flex flex-col items-center justify-start rounded-3xl group relative overflow-hidden shadow-lg border-2 border-transparent hover:border-primary/20 transition-all"
-                                            onClick={() => {
-                                                setBookingCategory(opt.category as any);
-                                                setBookingEvent(selectedEvent);
-                                            }}
-                                            disabled={!timeLeft}
-                                        >
-                                            <span className="text-2xl font-black mb-1">${opt.price.toFixed(2)}</span>
-                                            <span className="text-xl font-bold mb-2">{opt.label}</span>
-                                            <div className="w-12 h-1 bg-primary/20 rounded-full mb-4" />
-                                            <span className="text-sm font-medium opacity-70 mb-6">{timeLeft ? opt.desc : "Registration Closed"}</span>
+                            <h2 className="text-4xl md:text-6xl font-black mb-16 tracking-tighter">Ready to Join Us?</h2>
 
-                                            <div className="w-full border-t border-slate-100 my-2" />
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 max-w-7xl mx-auto">
+                                {/* Physical Attendance Section */}
+                                <div className="space-y-8 bg-white/5 p-8 rounded-[3rem] border border-white/10 flex flex-col">
+                                    <h3 className="text-3xl font-bold flex items-center justify-center gap-3">
+                                        <MapPin className="text-primary h-8 w-8" /> Physical Attendance
+                                    </h3>
+                                    <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-1 xl:grid-cols-3 gap-4 flex-grow">
+                                        {[
+                                            { category: 'SELF_FUNDED', label: 'Self Funded', p: selectedEvent.price, desc: 'Register now' },
+                                            { category: 'PARTIALLY_FUNDED', label: 'Partially Funded', p: selectedEvent.price * 0.75, desc: '25% discount' },
+                                            { category: 'FULLY_FUNDED', label: 'Fully Funded', p: selectedEvent.price * 0.5, desc: '50% scholarship' }
+                                        ].map((opt) => (
+                                            <Button
+                                                key={opt.category}
+                                                size="lg"
+                                                className="bg-white text-primary hover:bg-slate-50 h-auto py-8 flex flex-col items-center justify-start rounded-3xl group relative overflow-hidden shadow-lg border-2 border-transparent hover:border-primary/20 transition-all"
+                                                onClick={() => {
+                                                    setBookingMode('PHYSICAL');
+                                                    setBookingCategory(opt.category as any);
+                                                    setBookingEvent(selectedEvent);
+                                                }}
+                                                disabled={!timeLeft}
+                                            >
+                                                <span className="text-2xl font-black mb-1">${opt.p.toFixed(2)}</span>
+                                                <span className="text-lg font-bold mb-2">{opt.label}</span>
+                                                <div className="w-12 h-1 bg-primary/20 rounded-full mb-4" />
+                                                <span className="text-xs font-medium opacity-70 mb-4">{timeLeft ? opt.desc : "Closed"}</span>
 
-                                            <ul className="text-left w-full space-y-3 px-2 flex-grow">
-                                                {selectedEvent.benefits?.filter((b: any) => b.category === opt.category).map((b: any, i: number) => (
-                                                    <li key={i} className="text-sm text-slate-600 flex items-start gap-2 leading-tight">
-                                                        <CheckCircle className="h-4 w-4 text-emerald-500 flex-shrink-0 mt-0.5" />
-                                                        <span>{b.description}</span>
+                                                <ul className="text-left w-full space-y-2 px-2 mt-auto">
+                                                    {selectedEvent.benefits?.filter((b: any) => b.category === opt.category).slice(0, 2).map((b: any, i: number) => (
+                                                        <li key={i} className="text-[10px] text-slate-600 flex items-start gap-1 leading-tight">
+                                                            <CheckCircle className="h-3 w-3 text-emerald-500 flex-shrink-0" />
+                                                            <span>{b.description}</span>
+                                                        </li>
+                                                    ))}
+                                                </ul>
+                                                <Ticket className="absolute bottom-2 right-2 h-12 w-12 text-primary/5 -rotate-12 group-hover:scale-110 transition-transform pointer-events-none" />
+                                            </Button>
+                                        ))}
+                                    </div>
+                                    <p className="text-sm text-slate-400 mt-6 italic">Attend in person to experience the full energy of the event.</p>
+                                </div>
+
+                                {/* Virtual Attendance Section */}
+                                <div className="space-y-8 bg-white/5 p-8 rounded-[3rem] border border-white/10 flex flex-col">
+                                    <h3 className="text-3xl font-bold flex items-center justify-center gap-3">
+                                        <Globe className="text-primary h-8 w-8" /> Virtual Attendance
+                                    </h3>
+                                    <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-1 xl:grid-cols-3 gap-4 flex-grow">
+                                        {[
+                                            { category: 'SELF_FUNDED', label: 'Self Funded', p: selectedEvent.price * 0.65, desc: 'Virtual Access' },
+                                            { category: 'PARTIALLY_FUNDED', label: 'Partially Funded', p: selectedEvent.price * 0.75 * 0.65, desc: 'Virtual Discount' },
+                                            { category: 'FULLY_FUNDED', label: 'Fully Funded', p: selectedEvent.price * 0.5 * 0.65, desc: 'Virtual Scholar' }
+                                        ].map((opt) => (
+                                            <Button
+                                                key={opt.category}
+                                                size="lg"
+                                                className="bg-primary/20 text-white hover:bg-primary/30 h-auto py-8 flex flex-col items-center justify-start rounded-3xl group relative overflow-hidden shadow-lg border-2 border-white/10 hover:border-primary/40 transition-all"
+                                                onClick={() => {
+                                                    setBookingMode('VIRTUAL');
+                                                    setBookingCategory(opt.category);
+                                                    setBookingEvent(selectedEvent);
+                                                }}
+                                                disabled={!timeLeft}
+                                            >
+                                                <span className="text-2xl font-black mb-1">${opt.p.toFixed(2)}</span>
+                                                <span className="text-lg font-bold mb-2">{opt.label}</span>
+                                                <div className="w-12 h-1 bg-white/20 rounded-full mb-4" />
+                                                <span className="text-xs font-medium opacity-70 mb-4">{timeLeft ? opt.desc : "Closed"}</span>
+
+                                                <ul className="text-left w-full space-y-2 px-2 mt-auto">
+                                                    <li className="text-[10px] text-slate-300 flex items-start gap-1 leading-tight">
+                                                        <CheckCircle className="h-3 w-3 text-emerald-400 flex-shrink-0" />
+                                                        <span>Full Digital Access</span>
                                                     </li>
-                                                ))}
-                                                {(!selectedEvent.benefits || selectedEvent.benefits.filter((b: any) => b.category === opt.category).length === 0) && (
-                                                    <li className="text-sm text-slate-400 italic text-center py-4">Standard benefits apply</li>
-                                                )}
-                                            </ul>
-
-                                            <Ticket className="absolute bottom-4 right-4 h-24 w-24 text-primary/5 -rotate-12 group-hover:scale-110 transition-transform pointer-events-none" />
-                                        </Button>
-                                    ))}
+                                                </ul>
+                                                <Globe className="absolute bottom-2 right-2 h-12 w-12 text-white/5 -rotate-12 group-hover:scale-110 transition-transform pointer-events-none" />
+                                            </Button>
+                                        ))}
+                                    </div>
+                                    <p className="text-sm text-slate-400 mt-6 italic">Empowering global reach through digital excellence.</p>
                                 </div>
                             </div>
                         </div>
@@ -821,7 +915,12 @@ export default function UpcomingEvents() {
             )}
 
             {/* Booking Selection Dialog */}
-            <Dialog open={!!bookingEvent} onOpenChange={() => setBookingEvent(null)}>
+            <Dialog open={!!bookingEvent} onOpenChange={(open) => {
+                if (!open) {
+                    setBookingEvent(null);
+                    setResumingBookingId(null);
+                }
+            }}>
                 <DialogContent className="sm:max-w-lg rounded-3xl">
                     <DialogHeader>
                         <DialogTitle className="text-2xl font-bold">Confirm Your Booking</DialogTitle>
@@ -839,40 +938,68 @@ export default function UpcomingEvents() {
                                     <p className="text-primary font-bold">${bookingEvent.price}</p>
                                 </div>
                             </div>
+
                             <div className="space-y-3 font-medium text-slate-600">
-                                <p>Select your registration tier:</p>
+                                <p>Select attendance mode & tier:</p>
+                                <div className="grid grid-cols-2 gap-3 mb-4">
+                                    {[
+                                        { id: 'PHYSICAL', label: 'Physical', icon: MapPin },
+                                        { id: 'VIRTUAL', label: 'Virtual', icon: Globe }
+                                    ].map(mode => (
+                                        <div
+                                            key={mode.id}
+                                            className={cn(
+                                                "p-3 border rounded-2xl cursor-pointer flex flex-col items-center gap-2 transition-all",
+                                                bookingMode === mode.id ? 'border-primary bg-primary/5 ring-1 ring-primary' : 'hover:border-primary'
+                                            )}
+                                            onClick={() => setBookingMode(mode.id as any)}
+                                        >
+                                            <mode.icon className={cn("h-5 w-5", bookingMode === mode.id ? "text-primary" : "text-slate-400")} />
+                                            <span className={cn("text-xs font-bold", bookingMode === mode.id ? "text-primary" : "text-slate-600")}>{mode.label}</span>
+                                        </div>
+                                    ))}
+                                </div>
                                 <div className="grid grid-cols-1 gap-3">
                                     {[
                                         { id: 'SELF_FUNDED', label: 'Self Funded', p: bookingEvent.price },
                                         { id: 'PARTIALLY_FUNDED', label: 'Partially Funded', p: bookingEvent.price * 0.75 },
                                         { id: 'FULLY_FUNDED', label: 'Fully Funded', p: bookingEvent.price * 0.5 }
-                                    ].map(tier => (
-                                        <div
-                                            key={tier.id}
-                                            className={`p-4 border rounded-2xl cursor-pointer flex justify-between items-center group transition-all ${bookingCategory === tier.id ? 'border-primary bg-primary/5 ring-1 ring-primary' : 'hover:border-primary'}`}
-                                            onClick={() => setBookingCategory(tier.id as any)}
-                                        >
-                                            <div>
-                                                <span className="font-bold text-slate-900">{tier.label}</span>
-                                                <p className="text-xs text-slate-500">${tier.p.toFixed(2)}</p>
+                                    ].map(tier => {
+                                        const finalPrice = bookingMode === 'VIRTUAL' ? tier.p * 0.65 : tier.p;
+                                        return (
+                                            <div
+                                                key={tier.id}
+                                                className={cn(
+                                                    "p-4 border rounded-2xl cursor-pointer flex justify-between items-center group transition-all",
+                                                    bookingCategory === tier.id ? 'border-primary bg-primary/5 ring-1 ring-primary' : 'hover:border-primary'
+                                                )}
+                                                onClick={() => setBookingCategory(tier.id)}
+                                            >
+                                                <div>
+                                                    <span className="font-bold text-slate-900">{tier.label}</span>
+                                                    <p className="text-xs text-slate-500">${finalPrice.toFixed(2)}</p>
+                                                </div>
+                                                {bookingCategory === tier.id && <CheckCircle className="h-5 w-5 text-primary" />}
                                             </div>
-                                            {bookingCategory === tier.id && <CheckCircle className="h-5 w-5 text-primary" />}
-                                        </div>
-                                    ))}
+                                        );
+                                    })}
                                 </div>
                                 <div className="mt-4 p-4 bg-slate-50 rounded-xl">
                                     <h5 className="font-bold text-sm mb-2">Benefits for {bookingCategory.replace('_', ' ')}:</h5>
-                                    {bookingEvent.benefits?.filter((b: any) => b.category === bookingCategory).map((b: any, i: number) => (
-                                        <div key={i} className="flex gap-2 text-sm text-slate-600 items-start">
-                                            <CheckCircle className="h-4 w-4 text-emerald-500 mt-0.5 flex-shrink-0" />
-                                            <span>{b.description}</span>
-                                        </div>
-                                    ))}
-                                    {(!bookingEvent.benefits || bookingEvent.benefits.length === 0) && (
-                                        <p className="text-xs text-slate-500 italic">No specific benefits listed.</p>
-                                    )}
+                                    <div className="space-y-2">
+                                        {bookingEvent.benefits?.filter((b: any) => b.category === bookingCategory).map((b: any, i: number) => (
+                                            <div key={i} className="flex gap-2 text-sm text-slate-600 items-start">
+                                                <CheckCircle className="h-4 w-4 text-emerald-500 mt-0.5 flex-shrink-0" />
+                                                <span>{b.description}</span>
+                                            </div>
+                                        ))}
+                                        {(!bookingEvent.benefits || bookingEvent.benefits.filter((b: any) => b.category === bookingCategory).length === 0) && (
+                                            <p className="text-xs text-slate-500 italic">Standard benefits apply.</p>
+                                        )}
+                                    </div>
                                 </div>
                             </div>
+
                             <div className="flex gap-4 mt-6">
                                 <Button variant="outline" className="flex-1 h-12 rounded-xl" onClick={() => setBookingEvent(null)}>Cancel</Button>
                                 <Button className="flex-1 h-12 rounded-xl" onClick={() => {
@@ -881,27 +1008,29 @@ export default function UpcomingEvents() {
                                         return;
                                     }
 
-                                    // Check proposal requirement
+                                    const finalizeBooking = () => {
+                                        const basePrice = bookingCategory === 'SELF_FUNDED' ? bookingEvent.price :
+                                            bookingCategory === 'PARTIALLY_FUNDED' ? bookingEvent.price * 0.75 :
+                                                bookingEvent.price * 0.5;
+                                        const finalPrice = bookingMode === 'VIRTUAL' ? basePrice * 0.65 : basePrice;
+                                        const finalCategory = `${bookingMode}_${bookingCategory}`;
+                                        bookingMutation.mutate({ eventId: bookingEvent.id, category: finalCategory, amount: finalPrice });
+                                    };
+
                                     if (bookingEvent.requires_proposal) {
                                         if (existingProposal?.status === 'APPROVED') {
-                                            // Proceed to booking
+                                            finalizeBooking();
                                         } else if (existingProposal?.status === 'PENDING') {
                                             toast({ title: "Pending Approval", description: "Your proposal is still under review." });
-                                            return;
                                         } else if (existingProposal?.status === 'REJECTED') {
                                             toast({ title: "Proposal Rejected", description: "Unfortunately your proposal was not accepted.", variant: "destructive" });
-                                            return;
                                         } else {
-                                            // No proposal, open proposal modal
                                             setProposalModal(true);
-                                            return;
                                         }
+                                        return;
                                     }
 
-                                    const price = bookingCategory === 'SELF_FUNDED' ? bookingEvent.price :
-                                        bookingCategory === 'PARTIALLY_FUNDED' ? bookingEvent.price * 0.75 :
-                                            bookingEvent.price * 0.5;
-                                    bookingMutation.mutate({ eventId: bookingEvent.id, category: bookingCategory, amount: price });
+                                    finalizeBooking();
                                 }} disabled={bookingMutation.isPending}>
                                     {bookingMutation.isPending ? "Starting Booking..." : bookingEvent.requires_proposal && !existingProposal ? "Submit Proposal First" : "Proceed to Payment"}
                                 </Button>
@@ -972,7 +1101,7 @@ export default function UpcomingEvents() {
                             </div>
                             <div className="flex justify-between items-center p-4 border rounded-2xl">
                                 <span className="font-bold">Processing Fee</span>
-                                <span className="text-xl font-bold text-primary">Was $ 130 but now $65.00</span>
+                                <span className="text-xl font-bold text-primary">$65.00</span>
                             </div>
                             <div className="flex gap-4">
                                 <Button variant="outline" className="flex-1 h-12 rounded-xl" onClick={() => setVisaInvitationEvent(null)}>Cancel</Button>
