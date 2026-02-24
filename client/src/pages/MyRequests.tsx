@@ -213,17 +213,19 @@ export default function MyRequests() {
     const handleSuccessfulPayment = async (bookingId: string, type: string = 'event') => {
         setIsPaymentProcessing(true);
         try {
+            // Note: We no longer update the database directly from the frontend to prevent RLS violations.
+            // We rely on the Stripe/PayPal Webhook to update the status to CONFIRMED or PAID.
+
             if (type === 'event') {
                 const { data: booking, error: bookingError } = await supabase
                     .from('Booking')
-                    .update({ status: 'CONFIRMED' })
-                    .eq('id', bookingId)
                     .select('*, event:Event(*)')
+                    .eq('id', bookingId)
                     .single();
 
                 if (bookingError) throw bookingError;
 
-                // Generate and download PDF ticket
+                // Optimistically generate and download PDF ticket
                 generateTicketPDF({
                     eventTitle: booking.event.title,
                     eventDate: format(new Date(booking.event.date), 'PPPP'),
@@ -235,34 +237,16 @@ export default function MyRequests() {
                     bookingId: booking.id
                 });
 
-                toast({ title: "Booking Confirmed!", description: "Your ticket has been generated and downloaded." });
-                // Refresh data
-                fetchData();
+                toast({ title: "Booking Confirmation Processed!", description: "Your ticket has been generated. The status will update shortly." });
+                // We do not refresh data immediately as webhook might take a second
             } else if (type === 'visa') {
-                const { error: visaError } = await supabase
-                    .from('VisaInvitation')
-                    .update({ status: 'PAID', paymentStatus: 'PAID' })
-                    .eq('id', bookingId);
-
-                if (visaError) throw visaError;
-
-                toast({ title: "Visa Request Paid!", description: "Your request is now being processed." });
-                // Refresh data
-                fetchData();
+                toast({ title: "Visa Request Processed!", description: "Your payment was captured and the request is now being processed." });
             } else if (type === 'application') {
-                const { error: appError } = await supabase
-                    .from('Applications')
-                    .update({ status: 'APPROVED', paymentStatus: 'PAID' })
-                    .eq('id', bookingId);
-
-                if (appError) throw appError;
-
-                toast({ title: "Application Paid!", description: "Your application is now under review." });
-                fetchData();
+                toast({ title: "Application Processed!", description: "Your payment was captured and the application is now under review." });
             }
         } catch (error: any) {
-            console.error("Error finalizing booking:", error);
-            toast({ title: "Error", description: "Failed to finalize booking. Please contact support.", variant: "destructive" });
+            console.error("Error generating receipt or verifying booking:", error);
+            toast({ title: "Error", description: "Failed to load booking details after payment. Please contact support.", variant: "destructive" });
         } finally {
             setIsPaymentProcessing(false);
             setPaymentModal(null);

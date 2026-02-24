@@ -28,8 +28,8 @@ export default function PaymentSelection({ amount, onSelect, isProcessing }: Pay
                             <CreditCard className="h-6 w-6" />
                         </div>
                         <div className="text-left">
-                            <p className="font-bold text-lg">Pay with Card</p>
-                            <p className="text-sm text-slate-500">Secure payment via Stripe</p>
+                            <p className="font-bold text-lg">Pay with Prepaid Card</p>
+                            <p className="text-sm text-slate-500">Pay securely with your Visa/MasterCard</p>
                         </div>
                     </div>
                 </Button>
@@ -37,7 +37,7 @@ export default function PaymentSelection({ amount, onSelect, isProcessing }: Pay
 
             <div className="bg-amber-50 border border-amber-200 p-4 rounded-2xl flex gap-3 text-amber-800 text-sm">
                 <AlertCircle className="h-5 w-5 flex-shrink-0" />
-                <p>All payments are processed securely. Your booking will be confirmed immediately after successful payment.</p>
+                <p>All payments are processed securely. Your booking will be confirmed immediately after successful payment and further directions give, for more information cotact admin @support@worldyouthcentre.org.</p>
             </div>
         </div>
     );

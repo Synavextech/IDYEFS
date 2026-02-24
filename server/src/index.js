@@ -136,7 +136,7 @@ app.post('/api/create-checkout-session', async (req, res) => {
             }],
             mode: 'payment',
             success_url: `${process.env.VITE_FRONTEND_URL}/upcoming-events?status=success&bookingId=${bookingId}&type=${type}`,
-            cancel_url: `${process.env.VITE_FRONTEND_URL}/upcoming-events?status=cancelled`,
+            cancel_url: `${process.env.VITE_FRONTEND_URL}/upcoming-events?status=cancelled&bookingId=${bookingId}&type=${type}&resume=true`,
             metadata
         });
         res.json({ id: session.id, url: session.url });
@@ -178,23 +178,54 @@ app.post('/api/webhook', express.raw({ type: 'application/json' }), async (req, 
     res.json({ received: true });
 });
 
-// PayPal Order Verification
+// PayPal Webhook for async confirmation
+app.post('/api/webhook/paypal', async (req, res) => {
+    try {
+        const event = req.body;
+
+        if (event.event_type === 'PAYMENT.CAPTURE.COMPLETED' || event.event_type === 'CHECKOUT.ORDER.APPROVED') {
+            const resource = event.resource;
+            // Depending on PAYPAL setup, the custom_id is usually tracked in purchase_units
+            // but webhook payload structure varies a bit depending on order vs capture.
+            // Let's check for custom_id commonly placed in resource.custom_id or resource.purchase_units[0].custom_id
+
+            let bookingId = resource.custom_id;
+
+            // If it's an order approved event, custom_id is in purchase_units
+            if (!bookingId && resource.purchase_units && resource.purchase_units.length > 0) {
+                bookingId = resource.purchase_units[0].custom_id;
+            }
+
+            if (bookingId) {
+                // We need to attempt updates on all 3 tables since PayPal webhook might not pass the specific type easily in custom_id
+                // A better approach is prefixing the custom_id, but assuming standard format here.
+                // We will just try all tables safely.
+                await supabase.from('Booking').update({ status: 'CONFIRMED' }).eq('id', bookingId);
+                await supabase.from('VisaInvitation').update({ status: 'PAID', paymentStatus: 'PAID' }).eq('id', bookingId);
+                await supabase.from('Applications').update({ status: 'APPROVED', paymentStatus: 'PAID' }).eq('id', bookingId);
+
+                console.log(`PayPal webhook payment confirmed and DB updated for bookingId: ${bookingId}`);
+            } else {
+                console.log('PayPal webhook received but no custom_id (bookingId) found in payload', resource);
+            }
+        }
+
+        res.status(200).json({ received: true });
+    } catch (error) {
+        console.error('PayPal webhook error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// PayPal Order Verification (Legacy fallback, but secure only if we actually query PayPal API)
+// For now, removing DB updates from frontend-driven endpoint to maintain security.
 app.post('/api/verify-paypal-order', async (req, res) => {
     try {
         const { orderId, bookingId, type } = req.body;
-
-        if (type === 'event') {
-            const { error } = await supabase.from('Booking').update({ status: 'CONFIRMED' }).eq('id', bookingId);
-            if (error) throw error;
-        } else if (type === 'visa') {
-            const { error } = await supabase.from('VisaInvitation').update({ status: 'PAID', paymentStatus: 'PAID' }).eq('id', bookingId);
-            if (error) throw error;
-        } else if (type === 'application') {
-            const { error } = await supabase.from('Applications').update({ status: 'APPROVED', paymentStatus: 'PAID' }).eq('id', bookingId);
-            if (error) throw error;
-        }
-
-        res.json({ status: 'verified', orderId });
+        // The frontend calls this after the SDK completes.
+        // We will rely on the webhook /api/webhook/paypal to actually update the DB.
+        // Thus, this endpoint just acknowledges the frontend.
+        res.json({ status: 'pending_webhook_confirmation', orderId });
     } catch (error) {
         console.error('PayPal verification error:', error);
         res.status(500).json({ error: error.message });

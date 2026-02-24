@@ -120,17 +120,19 @@ export default function UpcomingEvents() {
     async function handleSuccessfulPayment(bookingId: string, type: string = 'event') {
         setIsPaymentProcessing(true);
         try {
+            // Note: We no longer update the database directly from the frontend to prevent RLS violations.
+            // We rely on the Stripe/PayPal Webhook to update the status to CONFIRMED or PAID.
+
             if (type === 'event') {
                 const { data: booking, error: bookingError } = await supabase
                     .from('Booking')
-                    .update({ status: 'CONFIRMED' })
-                    .eq('id', bookingId)
                     .select('*, Event(*)')
+                    .eq('id', bookingId)
                     .single();
 
                 if (bookingError) throw bookingError;
 
-                // Generate and download PDF ticket
+                // Optimistically generate the ticket for the user (the backend will confirm payment independently)
                 generateTicketPDF({
                     eventTitle: booking.Event.title,
                     eventDate: format(new Date(booking.Event.date), 'PPPP'),
@@ -142,29 +144,15 @@ export default function UpcomingEvents() {
                     bookingId: booking.id
                 });
 
-                toast({ title: "Booking Confirmed!", description: "Your ticket has been generated and downloaded." });
+                toast({ title: "Booking Confirmation Processed!", description: "Your ticket has been generated. Your booking state will update shortly." });
             } else if (type === 'visa') {
-                const { error: visaError } = await supabase
-                    .from('VisaInvitation')
-                    .update({ status: 'PAID', paymentStatus: 'PAID' })
-                    .eq('id', bookingId);
-
-                if (visaError) throw visaError;
-
-                toast({ title: "Visa Request Paid!", description: "Your request is now being processed." });
+                toast({ title: "Visa Request Processed!", description: "Your payment has been captured and your request is now being processed." });
             } else if (type === 'application') {
-                const { error: appError } = await supabase
-                    .from('Applications')
-                    .update({ status: 'APPROVED', paymentStatus: 'PAID' })
-                    .eq('id', bookingId);
-
-                if (appError) throw appError;
-
-                toast({ title: "Application Paid!", description: "Your application is now under review." });
+                toast({ title: "Application Processed!", description: "Your payment has been captured and your application is now under review." });
             }
         } catch (error: any) {
-            console.error("Error finalizing booking:", error);
-            toast({ title: "Error", description: "Failed to finalize booking. Please contact support.", variant: "destructive" });
+            console.error("Error generating receipt or verifying booking:", error);
+            toast({ title: "Error", description: "Failed to load booking details after payment. Please contact support.", variant: "destructive" });
         } finally {
             setIsPaymentProcessing(false);
         }
@@ -181,6 +169,15 @@ export default function UpcomingEvents() {
 
     const submitProposal = async () => {
         if (!user || !bookingEvent) return;
+        
+        // Ensure session is valid before performing RLS-restricted actions
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) {
+            toast({ title: "Session Expired", description: "Please log in again to upload documents and submit proposals.", variant: "destructive" });
+            setLocation(`/auth?redirectTo=${encodeURIComponent(window.location.pathname + window.location.search)}`);
+            return;
+        }
+
         setSubmittingProposal(true);
         try {
             let docUrl = null;
@@ -286,6 +283,10 @@ export default function UpcomingEvents() {
         mutationFn: async ({ eventId, category, amount }: { eventId: string, category: string, amount: number }) => {
             if (!user) throw new Error("User not authenticated");
 
+            // Validate strict session to prevent Row Level Violations
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session) throw new Error("Session expired. Please log in again.");
+
             if (resumingBookingId) {
                 const { data, error } = await supabase
                     .from('Booking')
@@ -363,6 +364,11 @@ export default function UpcomingEvents() {
     const visaMutation = useMutation({
         mutationFn: async ({ eventId, amount }: { eventId: string, amount: number }) => {
             if (!user) throw new Error("User not authenticated");
+
+            // Validate strict session to prevent Row Level Violations
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session) throw new Error("Session expired. Please log in again.");
+
             const { data, error } = await supabase
                 .from('VisaInvitation')
                 .insert({
