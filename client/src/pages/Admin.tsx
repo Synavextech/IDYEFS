@@ -15,6 +15,248 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { cn } from "@/lib/utils";
 
+function UserManager() {
+    const [users, setUsers] = useState<any[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [selectedUser, setSelectedUser] = useState<any | null>(null);
+    const [userActivity, setUserActivity] = useState<any>({
+        bookings: [],
+        proposals: [],
+        applications: [],
+        visaRequests: []
+    });
+    const [isFetchingActivity, setIsFetchingActivity] = useState(false);
+    const [searchQuery, setSearchQuery] = useState("");
+    const { toast } = useToast();
+
+    useEffect(() => {
+        fetchUsers();
+    }, []);
+
+    const fetchUsers = async () => {
+        setIsLoading(true);
+        const { data, error } = await supabase
+            .from('User')
+            .select('*, Stats(*)')
+            .order('createdAt', { ascending: false });
+
+        if (error) {
+            toast({ title: "Error fetching users", description: error.message, variant: "destructive" });
+        } else {
+            setUsers(data || []);
+        }
+        setIsLoading(false);
+    };
+
+    const fetchUserActivity = async (userId: string) => {
+        setIsFetchingActivity(true);
+        try {
+            const [bookingsRes, proposalsRes, applicationsRes, visaRes] = await Promise.all([
+                supabase.from('Booking').select('*, Event(title)').eq('userId', userId),
+                supabase.from('Proposals').select('*, Event(title)').eq('userId', userId),
+                supabase.from('Applications').select('*').eq('userId', userId),
+                supabase.from('VisaInvitation').select('*, Event(title)').eq('userId', userId)
+            ]);
+
+            setUserActivity({
+                bookings: bookingsRes.data || [],
+                proposals: proposalsRes.data || [],
+                applications: applicationsRes.data || [],
+                visaRequests: visaRes.data || []
+            });
+        } catch (error: any) {
+            toast({ title: "Error fetching activity", description: error.message, variant: "destructive" });
+        } finally {
+            setIsFetchingActivity(false);
+        }
+    };
+
+    const filteredUsers = users.filter(u =>
+        u.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        u.email?.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+
+    if (isLoading) return <div className="flex justify-center p-8"><Loader2 className="animate-spin h-8 w-8 text-primary" /></div>;
+
+    return (
+        <div className="space-y-6">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                <h2 className="text-xl font-bold text-primary">User Management</h2>
+                <Input
+                    placeholder="Search users..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="max-w-xs"
+                />
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                {/* Users List */}
+                <Card className="lg:col-span-1 h-[600px] flex flex-col">
+                    <CardHeader className="py-4">
+                        <CardTitle className="text-lg">Registered Users ({filteredUsers.length})</CardTitle>
+                    </CardHeader>
+                    <CardContent className="flex-1 overflow-y-auto p-2 space-y-2">
+                        {filteredUsers.length === 0 ? (
+                            <p className="text-center text-gray-500 py-4 italic">No users found.</p>
+                        ) : (
+                            filteredUsers.map(u => (
+                                <button
+                                    key={u.id}
+                                    onClick={() => {
+                                        setSelectedUser(u);
+                                        fetchUserActivity(u.id);
+                                    }}
+                                    className={cn(
+                                        "w-full text-left p-3 rounded-md transition-colors border",
+                                        selectedUser?.id === u.id
+                                            ? "bg-primary/10 border-primary shadow-sm"
+                                            : "bg-card hover:bg-slate-50 border-transparent hover:border-border"
+                                    )}
+                                >
+                                    <div className="flex items-center gap-3">
+                                        <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold">
+                                            {u.name?.charAt(0)?.toUpperCase()}
+                                        </div>
+                                        <div className="overflow-hidden">
+                                            <p className="font-semibold truncate">{u.name}</p>
+                                            <p className="text-xs text-gray-500 truncate">{u.email}</p>
+                                        </div>
+                                    </div>
+                                </button>
+                            ))
+                        )}
+                    </CardContent>
+                </Card>
+
+                {/* User Details & Activity */}
+                <Card className="lg:col-span-2 h-[600px] flex flex-col">
+                    {!selectedUser ? (
+                        <div className="flex-1 flex flex-col items-center justify-center text-gray-400 space-y-4">
+                            <User2 className="h-16 w-16 opacity-20" />
+                            <p>Select a user to view their complete activity.</p>
+                        </div>
+                    ) : (
+                        <>
+                            <CardHeader className="border-b bg-slate-50/50">
+                                <div className="flex justify-between items-start">
+                                    <div>
+                                        <CardTitle className="text-2xl">{selectedUser.name}</CardTitle>
+                                        <CardDescription>{selectedUser.email}</CardDescription>
+                                        <div className="flex gap-2 mt-2 text-xs">
+                                            <span className="bg-primary/10 text-primary px-2 py-1 rounded-md font-medium">Role: {selectedUser.role}</span>
+                                            <span className="bg-slate-100 text-slate-600 px-2 py-1 rounded-md">Joined: {format(new Date(selectedUser.createdAt), 'MMM yyyy')}</span>
+                                        </div>
+                                    </div>
+                                    {selectedUser.Stats?.[0] && (
+                                        <div className="text-right text-sm text-gray-500">
+                                            <p>Events Attended: <strong className="text-primary">{selectedUser.Stats[0].eventsAttended || 0}</strong></p>
+                                            <p>Points: <strong className="text-primary">{selectedUser.Stats[0].points || 0}</strong></p>
+                                        </div>
+                                    )}
+                                </div>
+                            </CardHeader>
+                            <CardContent className="flex-1 overflow-y-auto p-6 space-y-8">
+                                {isFetchingActivity ? (
+                                    <div className="flex justify-center p-8"><Loader2 className="animate-spin h-8 w-8 text-primary" /></div>
+                                ) : (
+                                    <>
+                                        {/* Bookings Overview */}
+                                        <section>
+                                            <h3 className="font-bold text-lg mb-3 flex items-center gap-2">Event Bookings <span className="text-sm bg-gray-100 px-2 py-0.5 rounded-full text-gray-600">{userActivity.bookings.length}</span></h3>
+                                            {userActivity.bookings.length === 0 ? <p className="text-sm text-gray-500 italic">No event bookings yet.</p> : (
+                                                <div className="grid gap-2">
+                                                    {userActivity.bookings.map((b: any) => (
+                                                        <div key={b.id} className="text-sm p-3 bg-slate-50 border rounded-md flex justify-between items-center">
+                                                            <div>
+                                                                <p className="font-medium text-primary">{b.Event?.title}</p>
+                                                                <p className="text-xs text-gray-500">Category: {b.category}</p>
+                                                            </div>
+                                                            <div className="text-right">
+                                                                <p className="font-bold">${b.amountPaid}</p>
+                                                                <span className={cn(
+                                                                    "text-[10px] px-2 py-0.5 rounded-full uppercase",
+                                                                    b.status === 'CONFIRMED' ? "bg-green-100 text-green-700" : "bg-yellow-100 text-yellow-700"
+                                                                )}>{b.status}</span>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </section>
+
+                                        {/* Applications Overview */}
+                                        <section>
+                                            <h3 className="font-bold text-lg mb-3 flex items-center gap-2">Applications <span className="text-sm bg-gray-100 px-2 py-0.5 rounded-full text-gray-600">{userActivity.applications.length}</span></h3>
+                                            {userActivity.applications.length === 0 ? <p className="text-sm text-gray-500 italic">No applications submitted.</p> : (
+                                                <div className="grid gap-2">
+                                                    {userActivity.applications.map((a: any) => (
+                                                        <div key={a.id} className="text-sm p-3 bg-slate-50 border rounded-md">
+                                                            <div className="flex justify-between items-center mb-1">
+                                                                <span className="font-bold text-primary">{a.type}</span>
+                                                                <span className={cn(
+                                                                    "text-[10px] px-2 py-0.5 rounded-full uppercase",
+                                                                    a.status === 'APPROVED' ? "bg-green-100 text-green-700" :
+                                                                        a.status === 'REJECTED' ? "bg-red-100 text-red-700" : "bg-yellow-100 text-yellow-700"
+                                                                )}>{a.status}</span>
+                                                            </div>
+                                                            <p className="text-xs text-gray-600 line-clamp-2">{a.description}</p>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </section>
+
+                                        {/* Proposals Overview */}
+                                        <section>
+                                            <h3 className="font-bold text-lg mb-3 flex items-center gap-2">Proposals <span className="text-sm bg-gray-100 px-2 py-0.5 rounded-full text-gray-600">{userActivity.proposals.length}</span></h3>
+                                            {userActivity.proposals.length === 0 ? <p className="text-sm text-gray-500 italic">No proposals submitted.</p> : (
+                                                <div className="grid gap-2">
+                                                    {userActivity.proposals.map((p: any) => (
+                                                        <div key={p.id} className="text-sm p-3 bg-slate-50 border rounded-md">
+                                                            <div className="flex justify-between items-center mb-1">
+                                                                <span className="font-medium">{p.Event?.title}</span>
+                                                                <span className={cn(
+                                                                    "text-[10px] px-2 py-0.5 rounded-full uppercase",
+                                                                    p.status === 'APPROVED' ? "bg-green-100 text-green-700" :
+                                                                        p.status === 'REJECTED' ? "bg-red-100 text-red-700" : "bg-yellow-100 text-yellow-700"
+                                                                )}>{p.status}</span>
+                                                            </div>
+                                                            <p className="text-xs text-gray-600 line-clamp-1">{p.description}</p>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </section>
+
+                                        {/* Visa Requests Overview */}
+                                        <section>
+                                            <h3 className="font-bold text-lg mb-3 flex items-center gap-2">Visa Requests <span className="text-sm bg-gray-100 px-2 py-0.5 rounded-full text-gray-600">{userActivity.visaRequests.length}</span></h3>
+                                            {userActivity.visaRequests.length === 0 ? <p className="text-sm text-gray-500 italic">No visa requests.</p> : (
+                                                <div className="grid gap-2">
+                                                    {userActivity.visaRequests.map((v: any) => (
+                                                        <div key={v.id} className="text-sm p-3 bg-slate-50 border rounded-md flex justify-between items-center">
+                                                            <span className="font-medium text-primary">{v.Event?.title}</span>
+                                                            <span className={cn(
+                                                                "text-[10px] px-2 py-0.5 rounded-full uppercase font-bold",
+                                                                v.status === 'APPROVED' ? "text-green-600" : "text-yellow-600"
+                                                            )}>{v.status}</span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </section>
+                                    </>
+                                )}
+                            </CardContent>
+                        </>
+                    )}
+                </Card>
+            </div>
+        </div>
+    );
+}
+
 function VisaInvitationManager() {
     const [requests, setRequests] = useState<VisaInvitation[]>([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -378,7 +620,7 @@ export default function AdminDashboard() {
     const [uploading, setUploading] = useState(false);
     const [selectedImages, setSelectedImages] = useState<File[]>([]);
     const [imagePreviews, setImagePreviews] = useState<string[]>([]);
-    const [activeTab, setActiveTab] = useState<'events' | 'blogs' | 'visa' | 'proposals' | 'applications'>('events');
+    const [activeTab, setActiveTab] = useState<'events' | 'blogs' | 'visa' | 'proposals' | 'applications' | 'users'>('events');
     const [editingEvent, setEditingEvent] = useState<Event | null>(null);
 
     useEffect(() => {
@@ -748,11 +990,18 @@ export default function AdminDashboard() {
                     >
                         Applications
                     </Button>
+                    <Button
+                        variant={activeTab === 'users' ? 'default' : 'outline'}
+                        onClick={() => setActiveTab('users')}
+                    >
+                        Users
+                    </Button>
                 </div>
             </div>
 
             {activeTab === 'proposals' && <ProposalManager />}
             {activeTab === 'applications' && <ApplicationManager />}
+            {activeTab === 'users' && <UserManager />}
 
 
             {activeTab === 'events' && (
